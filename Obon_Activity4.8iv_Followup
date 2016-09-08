@@ -1,0 +1,276 @@
+
+%let ST='1jan2013'd; 	/*--> s_cut=1*/
+       
+data _null_;		/*n= months elapsed from s_cut=1 to today() nはs_cut=1～本日の間の経過月数*/
+        call symput ("n",strip(intck("month",&ST-1,intnx('day',intnx('month',today(),0),0/*-1*/)))) ;
+run;
+
+%put %nrstr(&n =) &n;/* Check */
+
+data _null_;	/*&ST から today()までに月次macvarを作成。*/
+	%macro YM1;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend YM1;
+	%YM1 ;
+run;
+
+%macro YM2 ; /*output to log all yymm&i macvar*/
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend YM2;
+%YM2 ;
+
+
+/******  PART I  ******/
+
+%let s_cut =8;  	/* 1308 */
+%let e_cut =44;		/* 1608 */
+%let scenario1=type IN('店頭応対','往訪');
+%let scenario2=type='アウトバウンド（架電）' and AC_status IN('本人対話','来店誘致');
+
+%macro Obon_Activity;
+%do j=2 %to 1 %by -1;
+	%do i=&s_cut %to &e_cut %by 12;
+
+		proc sort data=raw.ACTIVITY_20&&yymm&i
+		out=a(drop=ac_status cntnts md_op1 md_op2 cmt);
+		by st_date GCIF St_time;													
+
+		where 	&&scenario&j and
+				(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+				not missing(GRP) and
+			    GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所') and
+			    not missing(GCIF);
+		run;
+
+		proc sort data=a;by GCIF st_date St_time;run;/*(1) 同日に同GCIFは一回のみ 
+						(2) GCIF当りに一日に以上複数取引がある場合、最終レコードを取得
+						(3) 各お盆期間中にGCIF重複する場合がある。この方法で集計しないと一日別に支店・出張所別の来店数と合わない。*/
+
+		data b; /*Step I*/
+		set a;										
+
+		if (st_date>='12aug2013'd and st_date<='17aug2013'd) then Obon_Flag=2013;
+		else if (st_date>='11aug2014'd and st_date<='16aug2014'd) then Obon_Flag=2014;
+		else if (st_date>='10aug2015'd and st_date<='15aug2015'd) then Obon_Flag=2015;
+		else if (st_date>='10aug2016'd and st_date<='20aug2016'd) then Obon_Flag=2016;
+
+		if Obon_Flag=2013 or Obon_Flag=2014 or Obon_Flag=2015 or Obon_Flag=2016;	
+		run;
+
+		data Obon_&&yymm&i;/*Step II*/
+		set b;										
+		by GCIF st_date St_time;
+
+		if last.gcif; /*Must ensure last date visited during Obon period is picked*/
+		run;
+
+	%end;
+
+	data Obon_GCIF_Day_Unique; /*OUTPUT*/
+	set
+		%do i=&s_cut %to &e_cut %by 12;
+
+			Obon_&&yymm&i
+			
+		%end;
+	;
+	run ;
+
+	%do i=&s_cut %to &e_cut %by 12;
+		proc sql;
+		drop table Obon_&&yymm&i; /*macro*/
+		quit;
+	%end;
+
+	%if &j=2 %then %do;
+
+	proc sort data=Obon_GCIF_Day_Unique
+			  out=C_Obon_GCIF_Day_Unique;
+	by GCIF;run;
+
+	%end;
+
+	%else %do;
+	proc sort data=Obon_GCIF_Day_Unique;by GCIF;run;
+	%end;
+
+%end;
+%mend Obon_Activity;
+
+
+/******  PART II  ******/
+%macro Aug_activity;
+%do j=2 %to 1 %by -1;
+	%do i=&s_cut %to &e_cut %by 12;
+
+		proc sort data=raw.ACTIVITY_20&&yymm&i
+		out=a(drop=ac_status cntnts md_op1 md_op2 cmt);
+		by st_date GCIF St_time;													
+
+		where 	&&scenario&j and
+				(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+				not missing(GRP) and
+			    GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所') and
+			    not missing(GCIF);
+		run;
+
+		data act_&&yymm&i;
+		set a;										
+		by st_date GCIF St_time;
+
+		if last.GCIF;	
+		run;
+
+	%end;
+
+	data act_GCIF_Day_Unique; /*OUTPUT*/
+	set
+		%do i=&s_cut %to &e_cut %by 12;
+
+			act_&&yymm&i
+			
+		%end;
+	;
+	run ;
+
+	%do i=&s_cut %to &e_cut %by 12;
+		proc sql;
+		drop table act_&&yymm&i; /*macro*/
+		quit;
+	%end;
+
+	%if &j=2 %then %do;
+
+	proc sort data=act_GCIF_Day_Unique
+			  out=C_act_GCIF_Day_Unique;
+	by GCIF;run;
+
+	%end;
+
+	%else %do;
+	proc sort data=act_GCIF_Day_Unique;by GCIF;run;
+	%end;
+
+%end;
+%mend Aug_activity;
+
+%Obon_Activity
+%Aug_activity
+
+
+%let Act_yr=2016;
+%let O_yr=%eval(&Act_yr-1);
+
+data _null_;
+        call symput ("Act_start",strip(mdy(08,1,&Act_yr))) ;
+	    call symput ("Act_end",strip(mdy(08,31,&Act_yr))) ;
+run;
+
+data c1;
+merge C_act_gcif_day_unique(in=t1 where=(st_date>=&act_start and st_date<=&act_end))/*CHANGE*/
+	C_obon_gcif_day_unique(in=t2 keep=gcif Obon_flag where=(obon_flag=&o_yr));/*CHANGE*/
+by gcif;
+if t1;
+run;
+proc sql;
+create table CACT as
+select St_date,count(gcif) as cnt&Act_yr/*CHANGE*/
+from c1
+group by st_date
+order by st_Date;quit;
+
+proc sql;
+create table CACT_O as
+select St_date,count(gcif) as O&o_yr._cnt/*CHANGE*/
+from c1
+where not missing(Obon_Flag)
+group by st_date
+order by st_Date;quit;
+
+data a1;
+merge act_gcif_day_unique(in=t1 where=(st_date>=&act_start and st_date<=&act_end))/*CHANGE*/
+	obon_gcif_day_unique(in=t2 keep=gcif Obon_flag where=(obon_flag=&o_yr));/*CHANGE*/
+by gcif;
+if t1;
+run;
+
+proc sql;
+create table ACT as
+select St_date,count(gcif) as cnt&Act_yr/*CHANGE*/
+from a1
+group by st_date
+order by st_Date;quit;
+
+proc sql;
+create table ACT_O as
+select St_date,count(gcif) as O&o_yr._cnt/*CHANGE*/
+from a1
+where not missing(Obon_Flag)
+group by st_date
+order by st_Date;quit;
+
+data ACT&Act_yr;/*CHANGE*/
+merge ACT(in=t1)
+	ACT_O(in=t2);
+by st_date;
+type='raiten';
+Mo=month(st_date);
+Dy=day(st_date);
+run;
+
+data CACT&Act_yr;/*CHANGE*/
+merge CACT(in=t1)
+	CACT_O(in=t2);
+by st_date;
+type='contact';
+Mo=month(st_date);
+Dy=day(st_date);
+run;
+
+proc sql;
+create table text as
+select *
+from CACT2015 as t1,CACT2016 as t2,ACT2015 as t3,ACT2016 as t4
+where t1.dy=t2.dy or t1.dy=t3.dy or t1.dy=t4.dy or t2.dy=t3.dy or t2.dy=t4.dy or t3.dy=t4.dy;
+quit;
+
+data new_sum;
+set 
+CACT2015
+CACT2016
+ACT2015
+ACT2016;
+run;
+
+
+/*EDA*/
+proc compare base=CACT2016  compare=ACACT2016;run;
+
+proc sort data=c1;by st_date;run;
+
+/*eda*/
+proc sql;
+create table test as
+select distinct grp
+from C_act_GCIF_Day_Unique
+where st_Date<'01aug2016'd;quit;
+/**/
+
+
+
+
+
+
+
+/*EDA*/
+proc sql;
+create table act1 as
+select St_date,grp,count(gcif) as cnt
+from act_gcif_day_unique
+group by st_date,Grp
+order by st_Date,Grp;
+quit;
