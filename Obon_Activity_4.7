@@ -1,0 +1,1184 @@
+filename home "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch";
+
+%let ST='1jan2013'd; 	/*--> s_cut=1*/
+       
+data _null_;		/*n= months elapsed from s_cut=1 to today() nはs_cut=1～本日の間の経過月数*/
+        call symput ("n",strip(intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1)))) ;
+run;
+
+%put %nrstr(&n =) &n;/* Check */
+
+data _null_;	/*&ST から today()までに月次macvarを作成。*/
+	%macro YM1;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend YM1;
+	%YM1 ;
+run;
+
+%macro YM2 ; /*output to log all yymm&i macvar*/
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend YM2;
+%YM2 ;
+
+
+/******  PART I  ******/
+
+%let s_cut =8;  	/* 1312 */
+%let e_cut =32;		/* 1512 */
+
+%macro Obon;
+%do i=&s_cut %to &e_cut %by 12;
+
+	proc sort data=raw.ACTIVITY_20&&yymm&i
+	out=a(drop=ac_status cntnts md_op1 md_op2 cmt);
+	by st_date GCIF St_time;													
+	where 	type IN('店頭応対','往訪') and /*type='アウトバウンド（架電）' or AC_status IN('本人対話','来店誘致') */
+			(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+			not missing(GRP) and /*GRPの未入力の数が少ない為、除外対象。*/
+		    GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所');/*件数が少ない、又エラー入力と思われるものを除外。*/
+	run;
+
+	proc sort data=a presorted;by st_date GCIF grp;run; 
+
+	data b(drop=count) Null_Obon_&&yymm&i(drop=count);
+	set a;										
+	by st_date GCIF grp;
+
+	if (st_date>='12aug2013'd and st_date<='17aug2013'd) then Obon_Flag=2013;
+	else if (st_date>='11aug2014'd and st_date<='16aug2014'd) then Obon_Flag=2014;
+	else if (st_date>='10aug2015'd and st_date<='15aug2015'd) then Obon_Flag=2015;
+
+	if first.GCIF then Count=0;
+	Count+1;
+
+	if missing(GCIF) then do;
+		GCIF_Flag=1;
+		GCIF=strip(put(Count,3.)||'_'||put(st_date,YYMMDD6.));end;/*それぞれヌルGCIFを識別する為、仮の値を挿入。*/
+	else  GCIF_Flag=0;
+
+	if GCIF_Flag=1 then output Null_Obon_&&yymm&i;			/*macro*/ 
+
+	if Obon_Flag=2013 or Obon_Flag=2014 or Obon_Flag=2015 
+	then output b;	
+	run;
+
+	proc sort data=b;by GCIF st_date St_time;run;/*(1) 同日に同GCIFは一回のみ 
+					(2) GCIF当りに一日に以上複数取引がある場合、最終レコードを取得
+					(3) 各お盆期間中にGCIF重複する場合がある。この方法で集計しないと一日別に支店・出張所別の来店数と合わない。*/
+
+	data Obon_&&yymm&i;/*macro*/
+	set b;											
+	by GCIF st_date St_time;
+	if last.GCIF;
+	run;
+
+	proc sql; 
+	create table Obon_SUM_&&yymm&i as  				/*macro*/
+	select Obon_Flag,st_date,grp,count(GCIF) as CNT
+	from Obon_&&yymm&i								
+	where  Obon_Flag in (2013,2014,2015)
+	group by Obon_Flag,st_date,grp;
+	quit;
+
+%end;
+
+data Obon_SUM; /*OUTPUT*/
+set
+	%do i=&s_cut %to &e_cut %by 12;
+
+		Obon_SUM_&&yymm&i
+		
+	%end;
+;
+run ;
+
+
+%do i=&s_cut %to &e_cut %by 12;
+	proc sql;
+	drop table Obon_SUM_&&yymm&i; /*macro*/
+	quit;
+%end;
+
+data Null_GCIF_Obon; /*OUTPUT*/
+set
+	%do i=&s_cut %to &e_cut %by 12;
+
+		Null_Obon_&&yymm&i
+		
+	%end;
+;
+run ;
+
+
+%do i=&s_cut %to &e_cut %by 12;
+	proc sql;
+	drop table Null_Obon_&&yymm&i; /*macro*/
+	quit;
+%end;
+
+data Obon_GCIF_Day_Unique; /*OUTPUT*/
+set
+	%do i=&s_cut %to &e_cut %by 12;
+
+		Obon_&&yymm&i
+		
+	%end;
+;
+run ;
+
+%do i=&s_cut %to &e_cut %by 12;
+	proc sql;
+	drop table Obon_&&yymm&i; /*macro*/
+	quit;
+%end;
+
+proc sort data=Obon_GCIF_Day_Unique out=Obon_GCIF_YR_Unique;by Obon_Flag GCIF;run;
+data Obon_GCIF_YR_Unique;
+set Obon_GCIF_YR_Unique;
+by Obon_Flag GCIF;
+if Last.GCIF;/*お盆年の期間中別に最終来店日にユニークGCIFを識別*/
+run;
+
+proc sort data=Obon_GCIF_Day_Unique(where=(GCIF_Flag=0)) 
+		  out=Obon_GCIF_Unique(keep=GCIF) nodupkey;/*お盆2013-2015の期間に最終来店日にユニークGCIFを識別*/
+by GCIF;
+run;
+
+%mend Obon;
+
+%Obon
+
+
+
+/******  PART II  ******/
+
+%let s_cut =1;  	/* 1301 */
+%let e_cut =36;		/* 1512 */
+
+%macro DaysMonths;
+/*Months*/
+%do i=&s_cut %to &e_cut;
+
+	proc sort data=raw.ACTIVITY_20&&yymm&i/*macro*/
+			   out=a1(drop=ac_status cntnts md_op1 md_op2 cmt);
+	by st_date GCIF st_time;
+	where 	type IN('店頭応対','往訪') and 
+			(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+			not missing(GRP) and /*GRPの未入力の数が少ない為、除外対象。*/
+			GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所');/*件数が少ない、又エラー入力と思われるものを除外。*/
+	run;														
+
+	proc sort data=a1;by st_date GCIF grp;run;/*Need GRP in sort in order to identify null visits below*/
+
+	data b1(drop=count) Null_&&yymm&i(drop=count);/*macro*/
+	set a1;											
+	by st_date GCIF grp;
+
+	if first.GCIF then Count=0;
+	Count+1;
+
+	if missing(GCIF) then do;
+		GCIF_Flag=1;
+		GCIF=strip(put(Count,3.)||'_'||put(st_date,YYMMDD6.));end;/*それぞれヌルGCIFを識別する為、仮の値を挿入。*/
+	else  GCIF_Flag=0;
+
+	if GCIF_Flag=1 then output Null_&&yymm&i;/*macro*/
+	if GCIF_Flag=1 or GCIF_Flag=0 then ouput b1;/*macro*/
+	run;
+
+	proc sort data=b1;by GCIF st_date St_time;run;/*must resort inorder to get correct last time visit*/
+
+	data actv_&&yymm&i;/*macro*/
+	set b1;											
+	by GCIF st_date St_time;
+	if last.GCIF;
+	run;
+
+	proc sql; 
+	create table actv_&&yymm&i.._SUM as 		/*macro*/
+	select st_date,grp,count(GCIF) as Dly_CNT
+	from actv_&&yymm&i							/*macro*/	
+	group by st_date,grp;
+	quit;
+
+	proc sql noprint;
+	select count(distinct st_date) format 3. INTO:Obs
+	from Actv_&&yymm&i;quit;										/*macro*/
+
+	%put Eigyoubi= &obs;
+
+	proc sql noprint;
+	select distinct st_date into :Day1 - :Day40
+	from Actv_&&yymm&i													/*macro*/
+	group by st_date;
+	quit;
+
+	/*output to log all yymm&i macvar*/
+		%do s=1 %to &obs;
+			%put Day&s = &&Day&s;
+		%end ;
+
+
+	/*Days*/
+	%do q=1 %to &obs;
+
+		data _null_;
+				call symput("a",mdy(%substr(&&Day&q,6,2), %substr(&&Day&q,9,2), %substr(&&Day&q,1,4)));
+				call symput("Yr",%substr(&&Day&q,1,4));
+		run;
+		%put &a;
+		%put &yr;
+
+/*** Pattern 1 ***/ /*同日にGCIFは一回のみカウントするべく。*/
+		proc sort data=Obon_GCIF_Day_Unique presorted;by st_date Grp GCIF;run;
+		proc sort data=Actv_&&yymm&i presorted;by st_date Grp GCIF;run;			/*macro*/
+
+		data Temp1(where=(Obon_flag=&yr));											/*macro*/
+		merge Actv_&&yymm&i(in=t1 where=(st_date=&a)) 			/*macro*/
+			  Obon_GCIF_Day_Unique(in=t2 where=(Obon_Flag=&yr) keep=st_date grp GCIF Obon_flag);		/*macro*/
+		by st_date Grp GCIF;
+		if t1;
+		run;
+
+		proc sql;
+		create table Temp2 as	/*macro*/
+		select St_date,Grp,count(gcif) as CNT
+		from Temp1						
+		group by st_Date,grp;
+		run;
+
+		data Actv_&&yymm&i.._Day&q;					/*macro*/
+		merge	ACTV_&&yymm&i.._SUM(in=t1 where=(st_date=&a))			/*macro*/
+			    Temp2(in=t2);			/*macro*/
+		by Grp;
+		if t1;
+		Delta=Dly_CNT-Cnt;
+		run;
+
+/*** Pattern 2 ***/ /*　同年お盆期間中に来店したGCIFのうち、お盆期間以外の営業日に来店したGCIFを結合する為。*/
+		proc sort data=Obon_GCIF_Day_Unique presorted;by  GCIF;run;
+		proc sort data=Actv_&&yymm&i presorted;by GCIF;run;			/*macro*/
+
+		data Temp_a;									/*macro*/
+		merge Actv_&&yymm&i(in=t1 where=(st_date=&a))			/*macro*/
+			  Obon_GCIF_Day_Unique(in=t2 where=(Obon_Flag=&yr) keep=GCIF Obon_flag);	/*macro*/
+		by GCIF;
+		if t1 and t2;
+		if last.gcif; /*Obon_GCIF_Day_UniqueはGCIF別にユニークではない為。NEW*/
+		run;
+
+		proc sql;
+		create table Temp_b as	
+		select St_date,Grp,count(gcif) as CNT 
+		from Temp_a						
+		group by st_Date,grp;
+		run;
+
+		data zActv_&&yymm&i.._Day&q;					/*macro*/
+		merge	ACTV_&&yymm&i.._SUM(in=t1 where=(st_date=&a))			/*macro*/
+			    Temp_b(in=t2);		
+		by Grp;
+		if t1;
+		Delta=Dly_CNT-Cnt;
+		run;
+
+/******/
+		proc sort data=Actv_&&yymm&i.._Day&q presorted;by st_date Grp;run;/*macro*/
+		proc sort data=zActv_&&yymm&i.._Day&q presorted;by st_date Grp;run; /*macro*/
+
+		data Actv_&&yymm&i.._Day&q;					/*macro*/
+		merge	Actv_&&yymm&i.._Day&q(in=t1)			/*macro*/
+			    zActv_&&yymm&i.._Day&q(in=t2 keep=st_date grp cnt rename=(cnt=zcnt));			/*macro*/
+		by st_date Grp;
+		if t1;
+		if missing(Cnt) then cnt=zcnt;
+		run;
+
+	%end;
+
+	/*Days End*/
+	data Actv_&&yymm&i.._SUMMARY; /*macro*/
+	set
+		%do p =1 %to &obs %by 1;
+
+			Actv_&&yymm&i.._Day&p
+			
+		%end;
+	;
+	run ;
+
+	%do r=1 %to &obs;
+		proc sql;
+		drop table Actv_&&yymm&i.._Day&r; /*macro*/
+		quit;
+	%end;
+
+	data zActv_&&yymm&i.._SUM; /*macro*/
+	set
+		%do w =1 %to &obs %by 1;
+
+			zActv_&&yymm&i.._Day&w
+			
+		%end;
+	;
+	run ;
+
+	%do y=1 %to &obs;
+		proc sql;
+		drop table zActv_&&yymm&i.._Day&y; /*macro*/
+		quit;
+	%end;
+
+%end;
+
+/*Months End*/
+data Actv_SUM; 
+set
+	%do i =&s_cut %to &e_cut %by 1;
+
+		Actv_&&yymm&i.._SUMMARY
+		
+	%end;
+;
+run ;
+
+%do u=&s_cut %to &e_cut;
+	proc sql;
+	drop table Actv_&&yymm&u.._SUM; /*macro*/
+	quit;
+%end;
+
+%do l=&s_cut %to &e_cut;
+	proc sql;
+	drop table Actv_&&yymm&l; /*macro*/
+	quit;
+%end;
+
+
+data Null_all; 
+set
+	%do e =&s_cut %to &e_cut %by 1;
+
+		Null_&&yymm&e
+		
+	%end;
+;
+run ;
+
+%do m=&s_cut %to &e_cut;
+	proc sql;
+	drop table Null_&&yymm&m; /*macro*/
+	quit;
+%end;
+
+
+
+%do k=&s_cut %to &e_cut;
+	proc sql;
+	drop table zActv_&&yymm&k.._SUM; /*macro*/
+	quit;
+%end;
+
+%do g=&s_cut %to &e_cut;
+	proc sql;
+	drop table Actv_&&yymm&g.._SUMMARY; /*macro*/
+	quit;
+%end;
+
+%mend DaysMonths;
+
+%DaysMonths
+
+
+/******  PART III  ******/
+
+data ACTV_SUM1;
+set ACTV_SUM(drop=zcnt);
+Delta=Dly_CNT-Cnt;
+if missing(delta) then Delta=Dly_CNT-Cnt;
+run;
+
+/*Triage*/
+
+proc sort data=actv_sum1;by st_date grp;run;
+
+data Acv_sum_temp;
+set Actv_sum;
+run;
+
+data Acv_sum1_temp;
+set Actv_sum1;
+run;
+
+data Acv_sum1_9_12;
+set Actv_sum1;
+run;
+
+data Acv_sum_test;
+set Actv_sum;
+run;
+data Acv_sum1_test;
+set Actv_sum1;
+run;
+/*/
+
+/*EDA*/
+proc sort data=actv_sum1;by delta;run;
+proc sort data=actv_sum;by st_date grp;run;
+proc sort data=actv_sum1;by st_date grp;run;
+/**/
+
+proc sort data=actv_sum1;by st_date grp;run;
+
+data sum1;
+set actv_sum1;
+Grp=strip(grp)||"_"||"合計";
+run;
+proc transpose data=sum1 out=sum1(drop=_name_);
+var dly_CNT; 
+by st_date;
+id grp;
+run;
+
+data sum2;
+set actv_sum1;
+Grp=strip(grp)||"_"||"お盆合計";
+run;
+
+proc transpose data=sum2 out=sum2(drop=_name_);
+var Cnt; 
+by st_date;
+id grp;
+run;
+
+data sum3;
+set actv_sum1;
+Grp=strip(grp)||"_"||"お盆差異";
+run;
+proc transpose data=sum3 out=sum3(drop=_name_);
+var Delta; 
+by st_date;
+id grp;
+run;
+
+data OBON_SUM_OUTPUT;
+merge sum1
+	 sum2
+	 sum3;
+by st_date;
+run;
+
+
+proc export data = OBON_SUM_OUTPUT
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\OBON_SUM_OUTPUT.csv"
+dbms = csv replace ;
+run ;
+
+proc export data = ACTV_SUM1
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\ACTV_SUM1.csv"
+dbms = csv replace ;
+run ;
+
+
+/******  PART IV  ******/
+
+/*Branch VISIT*/
+proc sort data=Obon_GCIF_Day_Unique out=ab;by GCIF Obon_Flag St_Date;run;
+
+data 
+	_2013 (keep=gcif _2013V	_2013Day _2013Br)
+	_2014 (keep=gcif _2014V	_2014Day _2014Br)
+	_2015 (keep=gcif _2015V	_2015Day _2015Br);
+set ab(where=(GCIF_flag=0));
+by  GCIF Obon_Flag St_Date;
+
+*if first.GCIF then Cnt=0;
+*Cnt+1;
+*if first.Obon_Flag then Cnt1=0;
+*Cnt1+1;
+
+if last.Obon_flag and Obon_flag=2013 then do;
+	_2013V=1;
+	_2013Day=st_date;
+	_2013Br=grp;
+	output _2013;end;
+else if last.Obon_flag and Obon_flag=2014 then do;
+	_2014V=1;
+	_2014Day=st_date;
+	_2014Br=grp;
+	output _2014;end;
+else if last.Obon_flag and Obon_flag=2015 then do;
+	_2015V=1;
+	_2015Day=st_date;
+	_2015Br=grp;
+	output _2015;end;
+format _2013Day _2014Day _2015Day YYMMDD10.;
+run;
+
+data Obon_GCIF_Unique_BR;
+merge _2013
+	  _2014
+	  _2015;
+by GCIF;
+run;
+
+
+%let s_cut =1;  	/* 1301 */
+%let e_cut =36;		/* 1512 */
+
+%macro Branch_Visit;
+
+%do i=&s_cut %to &e_cut;
+
+	%if &i=&s_cut %then %do;
+		proc sort data=raw.ACTIVITY_20&&yymm&i out=a;by GCIF;run; /*macro*/
+		proc sort data=Obon_GCIF_Unique_BR presorted;by GCIF;run;
+
+		data b;
+		merge a(in=t1 drop=ac_status cntnts md_op1 md_op2 cmt
+					where=(type IN('店頭応対','往訪') and (index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+					not missing(GRP)))
+			Obon_GCIF_Unique_BR(in=t2 keep=GCIF);
+		by GCIF;
+		if t1 and t2;
+		run;
+
+		proc sort data=b out=c;by GCIF st_date st_time;run;
+
+		data BrV_Master;
+		set c;
+		by GCIF st_date st_time;
+
+		if last.GCIF;
+		run;
+	%end;
+
+	%else %do;
+		proc sort data=raw.ACTIVITY_20&&yymm&i out=a;by GCIF;run; /*macro*/
+		proc sort data=Obon_GCIF_Unique_BR presorted;by GCIF;run;
+
+		data b;
+		merge a(in=t1 drop=ac_status cntnts md_op1 md_op2 cmt
+					where=(type IN('店頭応対','往訪') and (index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+					not missing(GRP)))
+			Obon_GCIF_Unique_BR(in=t2 keep=GCIF);
+		by GCIF;
+		if t1 and t2;
+		run;
+
+		proc sort data=b out=c;by GCIF st_date st_time;run;
+
+		data BrV_&&yymm&i;
+		set c;
+		by GCIF st_date st_time;
+
+		if last.GCIF;
+		run;
+
+		data BrV_Master;
+		set BrV_Master
+			BrV_&&yymm&i;run;
+
+		proc sort data=BrV_Master;by GCIF st_date st_time;run;
+
+		data BrV_Master;
+		set BrV_Master;
+		by GCIF st_date st_time;
+
+		if last.GCIF;
+		run;
+
+		proc sql;
+		drop table BrV_&&yymm&i;quit;
+	%end;
+
+%end;
+%mend Branch_Visit;
+
+%Branch_Visit
+
+/*** Summation only--EDA ***/
+data ac (rename=(AUM_in_SEC_brkrg=AUM) drop=/*AUM_in_SEC_brkrg*/ Crisk_AUM_ex_SEC SB_Sec);
+merge BrV_Master(in=t1 drop=st_time assign type)
+	  raw.eb_201606(keep=gcif AUM_in_SEC_brkrg Crisk_AUM_ex_SEC SB_Sec JPYCASA);
+by GCIF;
+if t1;
+'リスクAUM'n=Crisk_AUM_ex_SEC + SB_Sec;
+format AUM_in_SEC_brkrg comma30. 'リスクAUM'n comma30. JPYCASA comma30.;
+run;
+
+proc sql;
+create table Obon_Info(drop=st_date grp) as
+select coalesce(t1.GCIF,t2.GCIF) as GCIF,AUM, 'リスクAUM'n,JPYCASA, st_date as Chokin_Date, grp as Chokin_Grp, *
+from ac as t1 left join Obon_GCIF_Unique_BR as t2 on t1.GCIF=t2.GCIF
+order by GCIF;
+quit;
+
+
+/*EDA*/
+proc sort data=Obon_Info out=test;by descending JPYCASA;run;
+/**/
+
+/******  PART V  ******/
+
+/*Customer Contact*/
+
+%let s_cut =8;  	/* 1312 */
+%let e_cut =32;		/* 1512 */
+
+%macro Contact;
+%do i=&s_cut %to &e_cut %by 12;
+
+data a(drop=ac_status cntnts md_op1 md_op2 cmt where=(Obon_Flag=2013 or Obon_Flag=2014 or Obon_Flag=2015));
+	  set raw.ACTIVITY_20&&yymm&i;										
+
+	if (st_date>='12aug2013'd and st_date<='17aug2013'd) then Obon_Flag=2013;
+	else if (st_date>='11aug2014'd and st_date<='16aug2014'd) then Obon_Flag=2014;
+	else if (st_date>='10aug2015'd and st_date<='15aug2015'd) then Obon_Flag=2015;
+
+	where 	type='アウトバウンド（架電）' and AC_status IN('本人対話','来店誘致') and
+			(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+			not missing(GRP) and /*GRPの未入力の数が少ない為、除外対象。*/
+		    GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所') and/*件数が少ない、又エラー入力と思われるものを除外。*/
+			not missing(GCIF);
+	run;
+
+	proc sort data=a out=b;	by GCIF st_date St_time;run;
+
+	data Cnct_Obon_&&yymm&i;
+	set b;
+	by GCIF st_date St_time;
+
+	if last.GCIF;
+	run;
+
+%end;
+
+
+data Cnct_Obon_YR_Unique; /*OUTPUT*/
+set
+	%do i=&s_cut %to &e_cut %by 12;
+
+		Cnct_Obon_&&yymm&i
+		
+	%end;
+;
+run ;
+
+%do i=&s_cut %to &e_cut %by 12;
+	proc sql;
+	drop table Cnct_Obon_&&yymm&i; /*macro*/
+	quit;
+%end;
+
+%mend Contact;
+
+%Contact
+
+
+/*Branch Contact*/
+proc sort data=Cnct_Obon_YR_Unique out=ab;by GCIF Obon_Flag St_Date;run;
+
+/*EDA*/
+data test;
+set ab(drop=st_Time type assign);
+by  GCIF Obon_Flag St_Date;
+
+if first.GCIF then Cnt=0;
+Cnt+1;
+if first.Obon_Flag then Cnt1=0;
+Cnt1+1;
+if last.Obon_flag and Obon_flag=2013 then do;
+	_2013C=1;
+	_2013CDay=st_date;
+	_2013CBr=grp;end;
+else if last.Obon_flag and Obon_flag=2014 then do;
+	_2014C=1;
+	_2014CDay=st_date;
+	_2014CBr=grp;end;
+else if last.Obon_flag and Obon_flag=2015 then do;
+	_2015C=1;
+	_2015CDay=st_date;
+	_2015CBr=grp;end;
+format _2013CDay _2014CDay _2015CDay YYMMDD10.;
+run;
+/**/
+
+data
+	_2013C (keep=gcif _2013C	_2013CDay _2013CBr)
+	_2014C (keep=gcif _2014C	_2014CDay _2014CBr)
+	_2015C (keep=gcif _2015C	_2015CDay _2015CBr);
+set ab(drop=st_Time);
+by  GCIF Obon_Flag St_Date;
+
+*if first.GCIF then Cnt=0;
+*Cnt+1;
+*if first.Obon_Flag then Cnt1=0;
+*Cnt1+1;
+
+if last.Obon_flag and Obon_flag=2013 then do;
+	_2013C=1;
+	_2013CDay=st_date;
+	_2013CBr=grp;
+	output _2013C;end;
+else if last.Obon_flag and Obon_flag=2014 then do;
+	_2014C=1;
+	_2014CDay=st_date;
+	_2014CBr=grp;
+	output _2014C;end;
+else if last.Obon_flag and Obon_flag=2015 then do;
+	_2015C=1;
+	_2015CDay=st_date;
+	_2015CBr=grp;
+	output _2015C;end;
+format _2013CDay _2014CDay _2015CDay YYMMDD10.;
+run;
+
+/*EDA*/
+proc sort data=ac;by cnt;run;
+
+/**/
+
+data Cnct_Obon_Unique_Br;
+merge _2013C
+	  _2014C
+	  _2015C;
+by GCIF;
+run;
+
+
+%let s_cut =1;  	/* 1301 */
+%let e_cut =36;		/* 1512 */
+
+%macro Branch_Contact;
+
+%do i=&s_cut %to &e_cut;
+
+	%if &i=&s_cut %then %do;
+
+		proc sort data=raw.ACTIVITY_20&&yymm&i
+		out=a(drop=ac_status cntnts md_op1 md_op2 cmt);
+		by GCIF st_date St_time;													
+		where 	type='アウトバウンド（架電）' and AC_status IN('本人対話','来店誘致') and
+				(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+				not missing(GRP) and /*GRPの未入力の数が少ない為、除外対象。*/
+			    GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所') and/*件数が少ない、又エラー入力と思われるものを除外。*/
+				not missing(GCIF);
+		run;
+
+		data BrC_Master;
+		set a;										
+		by GCIF st_date St_time;
+
+		if last.GCIF;
+		run;
+
+	%end;
+
+	%else %do;
+
+		proc sort data=raw.ACTIVITY_20&&yymm&i
+		out=a(drop=ac_status cntnts md_op1 md_op2 cmt);
+		by GCIF st_date St_time;													
+		where 	type='アウトバウンド（架電）' and AC_status IN('本人対話','来店誘致') and
+				(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+				not missing(GRP) and /*GRPの未入力の数が少ない為、除外対象。*/
+			    GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所') and/*件数が少ない、又エラー入力と思われるものを除外。*/
+				not missing(GCIF);
+		run;
+
+		data BrC_&&yymm&i;
+		set a;										
+		by GCIF st_date St_time;
+
+		if last.GCIF;
+		run;
+
+		data BrC_Master;
+		set BrC_Master
+			BrC_&&yymm&i;run;
+
+		proc sort data=BrC_Master;by GCIF st_date st_time;run;
+
+		data BrC_Master;
+		set BrC_Master;
+		by GCIF st_date st_time;
+
+		if last.GCIF;
+		run;
+
+
+		proc sql;
+		drop table BrC_&&yymm&i;quit;
+	%end;
+
+%end;
+%mend Branch_Contact;
+
+%Branch_Contact
+
+/*** Summation only--EDA ***/
+data ac (rename=(AUM_in_SEC_brkrg=AUM) drop=Crisk_AUM_ex_SEC SB_Sec);
+merge BrC_Master(in=t1 drop=st_time assign type)
+	  raw.eb_201606(keep=gcif AUM_in_SEC_brkrg Crisk_AUM_ex_SEC SB_Sec JPYCASA);
+by GCIF;
+if t1;
+'リスクAUM'n=Crisk_AUM_ex_SEC + SB_Sec;
+format AUM_in_SEC_brkrg comma30. 'リスクAUM'n comma30. JPYCASA comma30.;
+run;
+
+proc sql;
+create table Cnct_Obon_Info(drop=st_date grp) as
+select coalesce(t1.GCIF,t2.GCIF) as GCIF,AUM, 'リスクAUM'n,JPYCASA, st_date as C_Chokin_Date, grp as C_Chokin_Grp, *
+from ac as t1 left join Cnct_Obon_Unique_BR as t2 on t1.GCIF=t2.GCIF
+order by GCIF;
+quit;
+/***/
+
+/******  PART VI  ******/
+
+/*MERGE CONTACT AND OBON*/
+
+data z;
+merge BrV_Master(in=t1 drop=st_time assign type rename=(st_date=Chokin_Date grp=Chokin_Grp))
+	  BrC_Master(in=t2 drop=st_time assign type rename=(st_date=C_Chokin_Date grp=C_Chokin_Grp))
+	  Obon_GCIF_Unique_BR
+	  Cnct_Obon_Unique_BR;
+by GCIF;
+run;
+
+data za (rename=(AUM_in_SEC_brkrg=AUM) drop=/*AUM_in_SEC_brkrg*/ Crisk_AUM_ex_SEC SB_Sec);;
+merge z(in=t1)
+	  raw.eb_201606(keep=gcif AUM_in_SEC_brkrg Crisk_AUM_ex_SEC SB_Sec JPYCASA);
+by GCIF;
+if t1;
+
+'リスクAUM'n=Crisk_AUM_ex_SEC + SB_Sec;
+format AUM_in_SEC_brkrg comma30. 'リスクAUM'n comma30. JPYCASA comma30.;
+
+length '類別'n $30;
+if (_2013c=1 or _2014c=1 or _2015c=1) and (_2013v=1 or _2014v=1 or _2015v=1) then '類別'n='2:来店＆コンタクトあり';
+else if (_2013v=1 or _2014v=1 or _2015v=1) and (missing(_2013c) or missing(_2014c) or missing(_2015c)) then '類別'n='1:来店あり';
+else if (_2013c=1 or _2014c=1 or _2015c=1) and (missing(_2013v) or missing(_2014v) or missing(_2015v)) then '類別'n='3:コンタクトあり';
+else '類別'n='4:NA';
+
+run;
+
+/*EDA*/
+proc sql;
+create table Br_Temp(drop=AUM 'リスクAUM'n JPYCASA) as
+select GCIF,'類別'n,AUM,'リスクAUM'n,JPYCASA, *
+from za
+order by GCIF;
+quit;
+
+proc freq data=Br_Temp;
+tables c_chokin_grp*'類別'n /norow nocol nopercent nocum;
+where '類別'n^='4:NA';
+run;
+
+data test;
+set BR_temp;
+if cat='4:NA' and '類別'n='2:来店＆コンタクトあり' then check=1;
+else check=0;
+run;
+proc sort data=test;by check;run;
+/**/
+
+
+proc sql;
+create table Br_Master as
+select GCIF,'類別'n,AUM,'リスクAUM'n,JPYCASA, *
+from za
+where '類別'n^='4:NA'
+order by GCIF;
+quit;
+
+proc datasets lib=work nolist;
+modify Br_Master;
+attrib '類別'n label='類別';
+attrib AUM label='AUM';
+attrib 'リスクAUM'n label='リスクAUM';
+attrib Chokin_Date label='3年間(2013-2015)の直近来店日';
+attrib Chokin_Grp label='3年間(2013-2015)の直近来店部店';
+attrib _2013V label='2013お盆来店有り';
+attrib _2013Day label='2013お盆来店来店日(最終)';
+attrib _2013Br label='2013お盆来店店舗名';
+attrib _2014V label='2014お盆来店有り';
+attrib _2014Day label='2014お盆来店来店日(最終)';
+attrib _2014Br label='2014お盆来店店舗名';
+attrib _2015V label='2015お盆来店有り';
+attrib _2015Day label='2015お盆来店来店日(最終)';
+attrib _2015Br label='2015お盆来店店舗名';
+attrib C_Chokin_Date label='3年間(2013-2015)の直近コンタクト日';
+attrib C_Chokin_Grp label='3年間(2013-2015)の直近コンタクト部店';
+attrib _2013C label='2013お盆コンタクト有り';
+attrib _2013CDay label='2013お盆コンタクトコンタクト日(最終)';
+attrib _2013CBr label='2013お盆コンタクト店舗名';
+attrib _2014C label='2014お盆コンタクト有り';
+attrib _2014CDay label='2014お盆コンタクトコンタクト日(最終)';
+attrib _2014CBr label='2014お盆コンタクト店舗名';
+attrib _2015C label='2015お盆コンタクト有り';
+attrib _2015CDay label='2015お盆コンタクトコンタクト日(最終)';
+attrib _2015CBr label='2015お盆コンタクト店舗名';
+run;
+
+proc sort data=br_master;by '類別'n Chokin_Date Chokin_Grp GCIF;run;
+
+/**reorder variables  Obon_BR_Visit_Contact_List_201606**/
+proc sql;
+create table List as
+select
+GCIF,
+類別,
+AUM,
+リスクAUM,
+JPYCASA,
+Chokin_Date,
+Chokin_Grp,
+_2013V,
+_2013Day,
+_2013Br,
+_2014V,
+_2014Day,
+_2014Br,
+_2015V,
+_2015Day,
+_2015Br,
+C_Chokin_Date,
+C_Chokin_Grp,
+_2013C,
+_2013CDay,
+_2013CBr,
+_2014C,
+_2014CDay,
+_2014CBr,
+_2015C,
+_2015CDay,
+_2015CBr
+from Br_Master;
+quit;
+/**/
+
+proc export data = List label 
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\Obon_BR_Visit_Contact_List_201606.csv"
+dbms = csv replace ;
+run ;
+
+
+/*EDA*/
+proc freq data=BR_Master;
+tables chokin_grp*'類別'n  / norow nocol nocum nopercent;
+run;
+
+proc freq data=BR_Master;
+tables c_chokin_grp*'類別'n  / norow nocol nocum nopercent;
+run;
+
+
+/*********** END  ************/
+
+
+/*********** ADDITIONAL  ************/
+
+
+/******  PART VII  ******/
+
+/*Contact Daily*/
+%let s_cut =1;  	/* 1301 */
+%let e_cut =36;		/* 1512 */
+
+%macro Contact_Daily;
+
+%do i=&s_cut %to &e_cut;
+
+	proc sort data=raw.ACTIVITY_20&&yymm&i/*macro*/
+			   out=a1(drop=ac_status cntnts md_op1 md_op2 cmt);
+	by st_date GCIF st_time;
+	where 	type='アウトバウンド（架電）' and AC_status IN('本人対話','来店誘致') and 
+			(index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+			not missing(GRP) and /*GRPの未入力の数が少ない為、除外対象。*/
+			GRP not in('メグロ支店','シブ支店','大阪支店','川崎出張所');/*件数が少ない、又エラー入力と思われるものを除外。*/
+	run;														
+
+	proc sort data=a1;by st_date GCIF grp;run;
+
+	data b1(drop=count) CNull_&&yymm&i(drop=count);/*macro*/
+	set a1;											
+	by st_date GCIF grp;
+
+	if first.GCIF then Count=0;
+	Count+1;
+
+	if missing(GCIF) then do;
+		GCIF_Flag=1;
+		GCIF=strip(put(Count,3.)||'_'||put(st_date,YYMMDD6.));end;
+	else  GCIF_Flag=0;
+
+	if GCIF_Flag=1 then output CNull_&&yymm&i;/*macro*/
+	if GCIF_Flag=1 or GCIF_Flag=0 then output b1;
+	run;
+
+	proc sort data=b1;by GCIF st_date St_time;run;
+
+	data c1;/*macro*/
+	set b1;											
+	by GCIF st_date St_time;
+
+	if last.GCIF;
+	run;
+
+	proc sql;
+	create table Cntct_&&yymm&i as
+	select st_date,grp,count(GCIF) as Cntct_Cnt
+	from c1
+	group by st_date,grp;
+	quit;
+
+%end;
+
+
+data CNull_SUM; /*OUTPUT*/
+set
+	%do i=&s_cut %to &e_cut;
+
+	 CNull_&&yymm&i
+		
+	%end;
+;
+run ;
+
+%do p=&s_cut %to &e_cut;
+	proc sql;
+	drop table CNull_&&yymm&p; /*macro*/
+	quit;
+%end;
+
+
+data Cntct_SUM; /*OUTPUT*/
+set
+	%do i=&s_cut %to &e_cut;
+
+		Cntct_&&yymm&i
+		
+	%end;
+;
+run ;
+
+%do q=&s_cut %to &e_cut;
+	proc sql;
+	drop table Cntct_&&yymm&q; /*macro*/
+	quit;
+%end;
+
+
+
+%mend Contact_Daily;
+
+%Contact_Daily
+
+
+/* Merge w/ Dly cnt*/
+proc sort data=ACTV_SUM1;by st_date grp;run;
+proc sort data=Cntct_SUm;by st_date grp;run;
+
+
+
+data Obon_raiten_Cntct;
+merge ACTV_SUM1(in=t1)
+	 Cntct_SUm(in=t2);
+by st_date grp;
+run;
+
+proc export data = Obon_raiten_Cntct
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\Obon_raiten_Cntct.csv"
+dbms = csv replace ;
+run ;
+
+
+
+
+
+
+
+
+
+/*old*/
+data test;
+merge BrV_Master(in=t1 drop=st_time assign type)
+	 Obon_GCIF_Unique_BR(in=t2);
+by GCIF;
+if t1;
+rename st_date=Chokin_Date grp=Chokin_Grp;
+run;
+/**/
+proc compare base=test compare=test1;run;
+
+
+/*Branch_Visit before macro*/
+proc sort data=raw.ACTIVITY_201301 out=a;by GCIF;run; /*macro*/
+proc sort data=Obon_GCIF_Unique_BR presorted;by GCIF;run;
+
+data b;
+merge a(in=t1 drop=ac_status cntnts md_op1 md_op2 cmt
+			where=(type IN('店頭応対','往訪') and (index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+			not missing(GRP)))
+	Obon_GCIF_Unique_BR(in=t2 keep=GCIF);
+by GCIF;
+if t1 and t2;
+run;
+
+proc sort data=b out=c;by GCIF st_date st_time;run;
+
+data BrV_Master;
+set c;
+by GCIF st_date st_time;
+
+if last.GCIF;
+run;
+
+/****/
+proc sort data=raw.ACTIVITY_201302 out=a;by GCIF;run; /*macro*/
+proc sort data=Obon_GCIF_Unique_BR presorted;by GCIF;run;
+
+data b;
+merge a(in=t1 drop=ac_status cntnts md_op1 md_op2 cmt
+			where=(type IN('店頭応対','往訪') and (index(GRP,'支店')>0 or index(GRP,'出張所')>0 or index(GRP,'本店')>0) and
+			not missing(GRP)))
+	Obon_GCIF_Unique_BR(in=t2 keep=GCIF);
+by GCIF;
+if t1 and t2;
+run;
+
+proc sort data=b out=c;by GCIF st_date st_time;run;
+
+data BrV_1302;
+set c;
+by GCIF st_date st_time;
+
+if last.GCIF;
+run;
+
+data BrV_Master;
+set BrV_Master
+	BrV_1302;run;
+
+proc sort data=BrV_Master;by GCIF st_date st_time;run;
+
+data BrV_Master;
+set BrV_Master;
+by GCIF st_date st_time;
+
+if first.gcif then cnt=0;
+cnt+1;
+if last.GCIF;
+run;
+
+proc sql;
+drop table BrV_1302;quit;
+
+/*********************/
