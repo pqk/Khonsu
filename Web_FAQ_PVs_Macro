@@ -1,0 +1,774 @@
+
+/*** Initial Date ***/
+%let ST='1jan2015'd; 	/*--> s_cut=1*/
+       
+data _null_;		/*n= months elapsed from s_cut=1 to today() nはs_cut=1～本日の間の経過月数*/
+        call symput ("n",strip(intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1)))) ;
+run;
+
+%put %nrstr(&n =) &n;/* Check */
+
+data _null_;	/*creates monthly macvar series from &ST to today()*/
+	%macro YM1;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend YM1;
+	%YM1 ;
+run;
+
+%macro YM2 ; /*output to log all yymm&i macvar*/
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend YM2;
+%YM2 ;
+
+
+%let s_cut = 1 ;  	/*YYMM133 1101  CHANGE*/
+%let e_cut =18 ;		/*YYMM197 1605  CHANGE*/
+
+%macro web;
+%do i=&s_cut %to &e_cut;
+	data WEBPG_ANA_&&yymm&i(drop=/*c31_RtoasterID */c51_Acc_Tm_Ana file_nm PV_Time page_name
+						 /*label=(ページ閲覧日=ページ閲覧日
+																ページ時間=ページ時間
+																ページカテゴリ=ページカテゴリ
+																ページ名称=ページ名称)*/);
+	set raw.WEBPG_ANA_20&&yymm&i(where=(URL in('http://faq.shinseibank.com/sphone/faq_detail.html?id=1168',
+					'http://www.shinseibank.com/sp/faq/id1168.html',
+					'http://faq.shinseibank.com/faq_detail.html?id=359'))
+					rename=(ページ閲覧日=PV_Date 
+							ページ時間=PV_Time
+							ページカテゴリ=Page_Cat
+							ページ名称=Page_Name
+							c31_RtoasterID=ToastID));
+	if index(Pages,'/sphone/')>0 or index(Pages,'/sp/')>0 then Device='Mobile';
+		else if missing(Pages) then Device='NA';
+		else Device='PC';
+	Access_DT=dhms(PV_Date,hour(PV_Time),minute(PV_Time),second(PV_Time));
+	format Access_DT datetime18.;
+	YM=&&yymm&i;
+	run;
+%end;
+
+data WEBPG_ANA;
+set
+%do i =&s_cut %to &e_cut %by 1;
+
+	WEBPG_ANA_&&yymm&i
+	
+%end ;
+;
+run ;
+
+%do p=&s_cut %to &e_cut;
+	proc sql;
+	drop table WEBPG_ANA_&&yymm&p; /*macro*/
+	quit;
+%end;
+
+%mend web;
+
+%web
+
+/******  DATA SET_UP *******/
+proc sql;
+create table a as
+select YM,PV_Date,Access_DT,Page_Cat,Pages,URL,ToastID,GCIF,PID,Device
+from webpg_ana
+where YM>1510
+order by ym, gcif;
+quit;
+
+proc sort data=a;by YM GCIF ToastID Access_DT;run;
+
+data b;
+set a;
+by YM GCIF ToastID Access_DT;
+
+if first.ToastID then PV_Cnt=0;
+PV_Cnt+1;
+
+if missing(GCIF) then GCIF_Flag=1;
+else  GCIF_Flag=0;
+if missing(ToastID) then T_Flag=1;
+else  T_Flag=0;
+run;
+
+proc sql;
+create table V_Type_List as
+select YM,ToastID,max(PV_Cnt) as MX,case
+	when max(PV_Cnt)>1 then 'Mult'
+	when max(PV_Cnt)=1 then 'Sngl'
+	else 'na' end as V_Type
+from b
+group by YM,ToastID;
+quit;
+
+proc sort data=b presorted;by ToastId;run;
+proc sort data=V_Type_List presorted;by ToastId;run;
+data webpage;
+merge b(in=t1)
+	  V_Type_List(in=t2 keep=ToastID V_Type);
+by ToastID;
+if t1;
+run;
+/******   *******/
+
+
+/******  TRANSFER DATA EDA *******/
+/*data set-up*/
+proc sql;
+create table a as
+select YM,PV_Date,Access_DT,Page_Cat,Pages,URL,ToastID,GCIF,PID,Device
+from webpg_ana
+order by ym, gcif;
+quit;
+
+proc sort data=a;by YM GCIF ToastID Access_DT;run;
+
+data b;
+set a;
+by YM GCIF ToastID Access_DT;
+
+if first.ToastID then PV_Cnt=0;
+PV_Cnt+1;
+
+if missing(GCIF) then GCIF_Flag=1;
+else  GCIF_Flag=0;
+if missing(ToastID) then T_Flag=1;
+else  T_Flag=0;
+run;
+
+proc sql;
+create table V_Type_List as
+select YM,ToastID,max(PV_Cnt) as MX,case
+	when max(PV_Cnt)>1 then 'Mult'
+	when max(PV_Cnt)=1 then 'Sngl'
+	else 'na' end as V_Type
+from b
+group by YM,ToastID;
+quit;
+
+proc sort data=b presorted;by ToastId;run;
+proc sort data=V_Type_List presorted;by ToastId;run;
+data webpage_all;
+merge b(in=t1)
+	  V_Type_List(in=t2 keep=ToastID V_Type);
+by ToastID;
+if t1;
+run;
+
+proc sort data=webpage_all out=webpage_unique nodupkey;by YM gcif;run;
+/**/
+
+
+%let s_cut =1 ;  	/* 15111  CHANGE*/
+%let e_cut =18 ;		/* 1606  CHANGE*/
+
+%macro Web_trf;
+%do i=&s_cut %to &e_cut;
+
+	proc sql;
+	create table a1 as
+	select GCIF,coalesce(t1.PID,t2.PID) as PID,*,case
+		when txn_type='Transfer' then 0
+		else 1 end as txn
+	from raw.FT_OB_DET_20&&yymm&i as t1 left join raw.GCIF_PID(keep=GCIF PID) as t2 on t1.PID=t2.PID
+	where not missing(GCIF) and txn_type not in ('Fee','CashBack')
+	order by GCIF,PID,Txn_Type;
+	quit;
+
+
+	proc sql;
+	create table Ft_temp (drop=uni_type type) as
+	select gcif,sum(txn_amt) as trf_AMT,count(distinct txn_type) as Uni_type,sum(txn) as type,
+	case
+			when sum(txn)=0 then 'Trf'
+			when sum(txn)=1 and count(distinct txn_type)=1 then 'KM'
+			when sum(txn)>=1 and count(distinct txn_type)=2 then 'Trf_KM' end as Trf_Status,
+	case 
+			when sum(txn_amt)<0 then '<0'
+			when sum(txn_amt)=0 then '=0'
+			when sum(txn_amt)>0 then '>0' end as Trf_Flag
+
+	from a1
+	group by gcif
+	order by gcif;
+	quit;
+
+	data Web_Trf_&&yymm&i;
+	merge webpage_unique(in=t1 keep=YM gcif Device PV_cnt V_type where=(YM=&&yymm&i))
+		Ft_temp(in=t2);
+	by gcif;
+	if t1;
+	if not t2 then do;
+		trf='N';
+		Trf_Flag='na';
+		Trf_Status='na';end;
+	else trf='Y';
+	run;
+
+	proc means data=web_Trf_&&yymm&i n mean;
+	var trf_AMT;
+	class trf Trf_Flag Trf_Status;
+	output out=Trf_&&yymm&i(where=(_TYPE_=7)) mean(trf_amt)=Ave_trf;
+	run;
+
+	proc sql;
+	create table Trf_&&yymm&i as
+	select &&yymm&i as YM,*
+	from Trf_&&yymm&i(drop=trf _Type_ rename=(_freq_=Cnt));
+	quit;
+
+	/*
+	data Trf_&&yymm&i(drop=Trf_Flag Trf_Status trf);
+	set Trf_&&yymm&i(drop=_Type_ rename=(_freq_=Cnt));
+	YM=&&yymm&i;
+	Trf_stat="_"||trf_flag||"_"||trf_status;
+	if Trf_flag='na' then Trf_Stat=Trf_flag;
+	run; 
+
+	proc transpose data=Trf_&&yymm&i out=Trf_&&yymm&i;
+	var Cnt Ave_trf;
+	by YM;
+	id Trf_stat;
+	format cnt comma20. ave_trf comma20.;
+	run;*/
+	
+%end;
+
+data Trf_FAQ;
+set
+%do q =&s_cut %to &e_cut %by 1;
+
+	Trf_&&yymm&q
+	
+%end ;
+;
+run ;
+
+%mend Web_trf;
+
+%Web_trf
+
+proc export data = Trf_FAQ
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\Trf_FAQ.csv"
+dbms = csv replace ;
+run ;
+
+
+/** ALL CUST COMPARISON **/
+
+%let s_cut =1 ;  	/* 15111  CHANGE*/
+%let e_cut =18 ;		/* 1606  CHANGE*/
+
+%macro All_trf;
+%do i=&s_cut %to &e_cut;
+
+	proc sql;
+	create table a1 as
+	select GCIF,coalesce(t1.PID,t2.PID) as PID,*,case
+		when txn_type='Transfer' then 0
+		else 1 end as txn
+	from raw.FT_OB_DET_20&&yymm&i as t1 left join raw.GCIF_PID(keep=GCIF PID) as t2 on t1.PID=t2.PID
+	where not missing(GCIF) and txn_type not in ('Fee','CashBack')
+	order by GCIF,PID,Txn_Type;
+	quit;
+
+	proc sql;
+	create table Ft_temp (drop=uni_type type) as
+	select gcif,sum(txn_amt) as trf_AMT,count(distinct txn_type) as Uni_type,sum(txn) as type,
+	case
+			when sum(txn)=0 then 'Trf'
+			when sum(txn)=1 and count(distinct txn_type)=1 then 'KM'
+			when sum(txn)>=1 and count(distinct txn_type)=2 then 'Trf_KM' end as Trf_Status,
+	case 
+			when sum(txn_amt)<0 then '<0'
+			when sum(txn_amt)=0 then '=0'
+			when sum(txn_amt)>0 then '>0' end as Trf_Flag
+
+	from a1
+	group by gcif
+	order by gcif;
+	quit;
+
+	data All_Trf_&&yymm&i;
+	merge raw.eb_20&&yymm&i(in=t1 keep=gcif)
+		Ft_temp(in=t2);
+	by gcif;
+	if t1;
+	if not t2 then do;
+		trf='N';
+		Trf_Flag='na';
+		Trf_Status='na';end;
+	else trf='Y';
+	run;
+
+	proc means data=All_Trf_&&yymm&i n mean;
+	var trf_AMT;
+	class trf Trf_Flag Trf_Status;
+	output out=Temp(where=(_TYPE_=7)) mean(trf_amt)=Ave_trf;
+	run;
+
+	proc sql;
+	create table All_Trf_&&yymm&i as
+	select &&yymm&i as YM,*
+	from Temp(drop=trf _Type_ rename=(_freq_=Cnt));
+	quit;
+
+	/*
+	data Trf_&&yymm&i(drop=Trf_Flag Trf_Status trf);
+	set Trf_&&yymm&i(drop=_Type_ rename=(_freq_=Cnt));
+	YM=&&yymm&i;
+	Trf_stat="_"||trf_flag||"_"||trf_status;
+	if Trf_flag='na' then Trf_Stat=Trf_flag;
+	run; 
+
+	proc transpose data=Trf_&&yymm&i out=Trf_&&yymm&i;
+	var Cnt Ave_trf;
+	by YM;
+	id Trf_stat;
+	format cnt comma20. ave_trf comma20.;
+	run;*/
+	
+%end;
+
+data All_Trf;
+set
+%do q =&s_cut %to &e_cut %by 1;
+
+	All_Trf_&&yymm&q
+	
+%end ;
+;
+run ;
+
+%mend All_trf;
+
+%All_trf
+
+proc export data = All_Trf
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\All_trf.csv"
+dbms = csv replace ;
+run ;
+
+
+
+%let s_cut =11 ;  	/* 15111  CHANGE*/
+%let e_cut =18 ;		/* 1606  CHANGE*/
+
+
+%macro Bef_Aft_PV;
+%do i=&s_cut %to &e_cut;
+
+	/** set-up to bring in before /after pg views **/
+	proc sort data=raw.WEBPG_ANA_20&&yymm&i out=aa(rename=(ページ閲覧日=PV_Date 
+								ページ時間=PV_Time
+								ページカテゴリ=Page_Cat
+								ページ名称=Page_Name
+								c31_RtoasterID=ToastID));
+	by c31_RtoasterID;run;
+
+	data bb(drop=c51_Acc_Tm_Ana file_nm PV_Time page_name);
+	set aa;
+
+	Access_DT=dhms(PV_Date,hour(PV_Time),minute(PV_Time),second(PV_Time));
+	format Access_DT datetime18.;
+	where URL not in('http://faq.shinseibank.com/sphone/faq_detail.html?id=1168',
+						'http://www.shinseibank.com/sp/faq/id1168.html',
+						'http://faq.shinseibank.com/faq_detail.html?id=359');
+	run;
+
+	data Temp;
+	set webpage(where=(YM=&&yymm&i));run;
+
+	proc sort data=temp out=temp(keep=GCIF PID ToastID ) nodupkey;by GCIF PID ToastID;run;/*unique list of who viewed FAQ in given mo.*/
+	proc sort data=bb;by GCIF PID ToastID;run;
+
+	data otherPV_&&yymm&i;
+	merge Temp(in=t1)
+	      bb(in=t2);
+	by GCIF PID ToastID;
+	if t1;/*because want all other PVs of same pop who viewed FAQ in given month(1606)*/
+	run;
+
+
+	/****/
+
+	data WP_&&yymm&i;
+	set webpage(where=(YM=&&yymm&i))
+		  otherPV_&&yymm&i;
+	run;
+
+	proc sort data=wp_&&yymm&i out=a;by GCIF PID toastid access_DT;run;
+
+
+	/*mult grouping check*/
+	/*proc sort data=a out=ab;by GCIF PID toastid V_Type;run;*/
+
+	data ab;
+	set a;
+	by GCIF PID toastid access_DT;
+
+	if first.toastid then T_Cnt=0;
+	T_Cnt +1;
+
+	if V_type='Sngl' and first.toastid^=1 and last.toastid^=1 then do;
+		Bef=T_cnt-1;
+		Aft=t_cnt+1;end;
+	else if V_type='Sngl' and first.toastid=1 and last.toastid=1 then do;
+		Bef=0;
+		Aft=0;end;
+	else if V_type='Sngl' and first.toastid=1  and last.toastid^=1 then do;
+		Bef=0;
+		Aft=t_cnt+1;end;
+	else if V_type='Sngl' and first.toastid^=1  and last.toastid=1 then do;
+		Bef=T_cnt-1;
+		Aft=0;end;
+	run;
+
+	/*SINGLES*/
+	proc sql;
+	create table Singles as
+	select *
+	from ab
+	where ToastID IN(select ToastID from V_Type_List where V_type='Sngl' and YM=&&yymm&i)
+	order by GCIF,PID, toastid, access_DT;
+	quit;
+
+	/*Before*/
+	proc sql;
+	create table Singles_Bef(drop=PV_Cnt T_Cnt Bef) as
+	select &&yymm&i as YM,coalesce(t1.toastid,t2.toastid) as Toastid,*,'Bef' as PV_Seq
+	from Singles(drop=Bef Aft) as t1 left join (select ToastID,Bef from Singles where V_type='Sngl') as t2 on t1.toastid=t2.toastid
+	where T_cnt=Bef
+	order by toastid;
+	quit;
+
+	data Singles_Bef_&&yymm&i;
+	set Singles_Bef;
+
+	if index(Pages,'/sphone/')>0 or index(Pages,'/sp/')>0 or index(Pages,'sp.shinseibank')>0 or index(Pages,'spdirect')>0 or
+	index(Pages,'sp_api')>0 or index(Pages,'sp_guide')>0 then Device='Mobile';
+	else if missing(Pages) then Device='NA';
+	else Device='PC';
+
+	if missing(GCIF) then GCIF_Flag=1;
+	else  GCIF_Flag=0;
+	if missing(ToastID) then T_Flag=1;
+	else  T_Flag=0;
+
+	V_Type='Sngl';
+	PV_Cnt=1;
+	run;
+
+	/*After*/
+	proc sql;
+	create table Singles_Aft(drop=Pv_cnt T_Cnt Aft)  as
+	select &&yymm&i as YM,coalesce(t1.toastid,t2.toastid) as Toastid,*,'Aft' as PV_Seq
+	from Singles(drop=Bef Aft) as t1 left join (select ToastID,Aft from Singles where V_type='Sngl') as t2 on t1.toastid=t2.toastid
+	where T_cnt=Aft;
+	quit;
+
+	data Singles_Aft_&&yymm&i;
+	set Singles_Aft;
+
+	if index(Pages,'/sphone/')>0 or index(Pages,'/sp/')>0 or index(Pages,'sp.shinseibank')>0 or index(Pages,'spdirect')>0 or
+	index(Pages,'sp_api')>0 or index(Pages,'sp_guide')>0 then Device='Mobile';
+	else if missing(Pages) then Device='NA';
+	else Device='PC';
+
+	if missing(GCIF) then GCIF_Flag=1;
+	else  GCIF_Flag=0;
+	if missing(ToastID) then T_Flag=1;
+	else  T_Flag=0;
+
+	V_Type='Sngl';
+	PV_Cnt=1;
+	run;
+	/***/
+
+
+	/*MULTIPLES*/
+	proc sql;
+	create table Temp as
+	select *
+	from ab
+	where ToastID IN(select ToastID from V_Type_List where V_type='Mult' and YM=&&yymm&i)
+	order by GCIF,PID, toastid, access_DT;
+	quit;
+
+	data Multiples;
+	set Temp;
+	by GCIF PID toastid access_DT;
+	if V_type='Mult' and first.toastid^=1 and last.toastid^=1 then do;
+		Bef=T_cnt-1;
+		Aft=t_cnt+1;end;
+	else if V_type='Mult' and first.toastid=1 and last.toastid=1 then do;
+		Bef=0;
+		Aft=0;end;
+	else if V_type='Mult' and first.toastid=1  and last.toastid^=1 then do;
+		Bef=0;
+		Aft=t_cnt+1;end;
+	else if V_type='Mult' and first.toastid^=1  and last.toastid=1 then do;
+		Bef=T_cnt-1;
+		Aft=0;end;
+	run;
+
+	/*Before*/
+	proc sql;
+	create table Multiples_Bef(drop=Pv_cnt T_Cnt Bef) as
+	select &&yymm&i as YM,coalesce(t1.toastid,t2.toastid) as Toastid,*,'Bef' as PV_Seq
+	from Multiples(drop=Bef Aft) as t1 left join (select ToastID,Bef from Multiples where V_type='Mult') as t2 on t1.toastid=t2.toastid
+	where T_cnt=Bef and missing(V_type) /*this logical essentially vets out the dup Mult PV items */
+	order by toastID;
+	quit;
+
+	proc sort data=V_Type_list presorted;by toastid;run;
+	data Multiples_Bef_&&yymm&i;
+	merge Multiples_Bef(in=t1)
+	      V_Type_list(in=t3 where=(YM=&&yymm&i) keep=YM toastID mx rename=(mx=PV_Cnt));
+	by ToastId;
+	if t1;
+
+	if index(Pages,'/sphone/')>0 or index(Pages,'/sp/')>0 or index(Pages,'sp.shinseibank')>0 or index(Pages,'spdirect')>0 or
+	index(Pages,'sp_api')>0 or index(Pages,'sp_guide')>0 then Device='Mobile';
+	else if missing(Pages) then Device='NA';
+	else Device='PC';
+
+	if missing(GCIF) then GCIF_Flag=1;
+	else  GCIF_Flag=0;
+	if missing(ToastID) then T_Flag=1;
+	else  T_Flag=0;
+
+	V_Type='Mult';
+	run;
+
+	/*After*/
+	proc sql;
+	create table Multiples_Aft(drop=Pv_cnt T_Cnt Aft) as
+	select &&yymm&i as YM,coalesce(t1.toastid,t2.toastid) as Toastid,*,'Aft' as PV_Seq
+	from Multiples(drop=Bef Aft) as t1 left join (select ToastID,Aft from Multiples where V_type='Mult') as t2 on t1.toastid=t2.toastid
+	where T_cnt=Aft and missing(V_type)/*this logical essentially vets out the dup Mult PV items */
+	order by toastid;
+	quit;
+
+
+	proc sort data=V_Type_list presorted;by toastid;run;
+	data Multiples_Aft_&&yymm&i;
+	merge Multiples_aft(in=t1)
+	      V_Type_list(in=t3 where=(YM=&&yymm&i) keep=YM toastID mx rename=(mx=PV_Cnt));
+	by ToastId;
+	if t1;
+
+	if index(Pages,'/sphone/')>0 or index(Pages,'/sp/')>0 or index(Pages,'sp.shinseibank')>0 or index(Pages,'spdirect')>0 or
+	index(Pages,'sp_api')>0 or index(Pages,'sp_guide')>0 then Device='Mobile';
+	else if missing(Pages) then Device='NA';
+	else Device='PC';
+
+	if missing(GCIF) then GCIF_Flag=1;
+	else  GCIF_Flag=0;
+	if missing(ToastID) then T_Flag=1;
+	else  T_Flag=0;
+
+	V_Type='Mult';
+	run;
+
+	/****/
+
+	/*     COMBINE     */
+	data Bef_aft_&&yymm&i;
+	set	Singles_Bef_&&yymm&i
+		Singles_Aft_&&yymm&i
+		Multiples_Bef_&&yymm&i
+		Multiples_Aft_&&yymm&i;
+	run;
+
+	/** Add Demograhic Info **/
+	proc sort data=raw.SBL_ZOK_20&&yymm&i(keep=GCIF sex age syokubun SB_Sec_Acct) out=a presorted;
+	by gcif;run;
+	proc sort data=raw.EB_20&&yymm&i(keep=gcif AUM_in_SEC_brkrg Crisk_AUM_ex_SEC SB_Sec JPYCASA dat_acct_open) out=b presorted;
+	by gcif;run;
+
+	data Demo_&&yymm&i(rename=(AUM_in_SEC_brkrg=AUM) drop= Crisk_AUM_ex_SEC SB_Sec);
+	merge   a
+			b;
+	by GCIF;
+
+	length Age_Dist $10.;
+	if age>=0 and age<=20 then Age_Dist='0:_0-20';
+	else if age>=21 and age<=35 then Age_Dist='1:_21-35';
+	else if age>=36 and age<=45 then Age_Dist='2:_36-45' ;
+	else if age>=46 and age<=55 then Age_Dist='3:_46-55' ;
+	else if age>=56 and age<=65 then Age_Dist='4:_56-65' ;
+	else if age>=66 and age<=75 then Age_Dist='5:_66-75' ;
+	else if age>=76 and age<=85 then Age_Dist='6:_76-85' ;
+	else if age>=86 and age<=95 then Age_Dist='7:_86-95' ;
+	else if age>=96 and age<=105 then Age_Dist='8:_96-105' ;
+	else if age>=106 then Age_Dist='9:_106+' ;
+
+	'リスクAUM'n=Crisk_AUM_ex_SEC + SB_Sec;
+	format AUM_in_SEC_brkrg comma30. 'リスクAUM'n comma30. JPYCASA comma30.;
+	run;
+
+	proc sql;
+	create table BEF_AFT_&&yymm&i as
+	select *
+	from BEF_AFT_&&yymm&i as t1 left join Demo_&&yymm&i as t2 on t1.gcif=t2.gcif;
+	quit;
+
+%end;
+
+
+%do u=&s_cut %to &e_cut;
+	proc sql;
+	drop table WP_&&yymm&u;
+	quit;
+%end;
+
+%do v=&s_cut %to &e_cut;
+	proc sql;
+	drop table otherPV_&&yymm&v; 
+	quit;
+%end;
+
+%do w=&s_cut %to &e_cut;
+	proc sql;
+	drop table Singles_Bef_&&yymm&w; 
+	quit;
+%end;
+
+%do x=&s_cut %to &e_cut;
+	proc sql;
+	drop table Singles_Aft_&&yymm&x; 
+	quit;
+%end;
+
+%do y=&s_cut %to &e_cut;
+	proc sql;
+	drop table Multiples_Bef_&&yymm&y; 
+	quit;
+%end;
+
+%do z=&s_cut %to &e_cut;
+	proc sql;
+	drop table Multiples_Aft_&&yymm&z;
+	quit;
+%end;
+
+%mend Bef_Aft_PV;
+
+%Bef_Aft_PV
+
+
+data bef_aft(where=(not missing(GCIF)));
+set
+BEF_AFT_1511
+BEF_AFT_1512
+BEF_AFT_1601
+BEF_AFT_1602
+BEF_AFT_1603
+BEF_AFT_1604
+BEF_AFT_1605
+BEF_AFT_1606;
+
+length JPY_Dist $20.;
+if JPYCASA<0 then JPY_Dist='0:_0<';
+else if JPYCASA>=0 and JPYCASA<100000 then JPY_Dist='1:_0-9万';
+else if JPYCASA>=100000 and JPYCASA<250000 then JPY_Dist='2:_10万-24万';
+else if JPYCASA>=250000 and JPYCASA<500000 then JPY_Dist='3:_25万-49万' ;
+else if JPYCASA>=500000 and JPYCASA<1000000 then JPY_Dist='4:_50万-99万' ;
+else if JPYCASA>=1000000 and JPYCASA<2500000 then JPY_Dist='5:_100万-249万' ;
+else if JPYCASA>=2500000 and JPYCASA<5000000 then JPY_Dist='6:_250万-499万' ;
+else if JPYCASA>=5000000 and JPYCASA<10000000 then JPY_Dist='7:_500万-999万' ;
+else if JPYCASA>=10000000 and JPYCASA<25000000 then JPY_Dist='8:_1000万-2499万' ;
+else if JPYCASA>=25000000 then JPY_Dist='9:_2500万+' ;
+run;
+
+
+
+
+
+
+
+
+
+
+
+
+
+proc freq;
+tables jpy_dist /norow nocol nocum nopercent;
+run;
+
+
+
+proc sgplot data=bef_aft;
+histogram JPYCASA / showbins;
+density jpycasa;
+run;
+
+
+proc export data = bef_aft
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\bef_aft.csv"
+dbms = csv replace ;
+run ;
+
+
+
+
+
+
+
+
+data ac (rename=(AUM_in_SEC_brkrg=AUM) drop=/*AUM_in_SEC_brkrg*/ Crisk_AUM_ex_SEC SB_Sec);
+merge BrV_Master(in=t1 drop=st_time assign type)
+	  raw.eb_201606(keep=gcif AUM_in_SEC_brkrg Crisk_AUM_ex_SEC SB_Sec JPYCASA);
+by GCIF;
+if t1;
+'リスクAUM'n=Crisk_AUM_ex_SEC + SB_Sec;
+format AUM_in_SEC_brkrg comma30. 'リスクAUM'n comma30. JPYCASA comma30.;
+run;
+
+
+/**** EDA ****/
+
+proc compare base=test_1606 compare=bef_aft_1606;run;
+
+data test_1606;
+set BEF_AFT_1606;
+run;
+
+
+proc sql;
+create table z as
+select Page_cat,pages,count(Pages) as Pg_Cnt
+from BEF_AFT_1511
+where V_Type='Sngl' and PV_Seq='Aft'
+group by Page_cat,Pages
+order by Pg_cnt desc;
+quit;
+
+/*******/
+
+
+
+
+/*EDA*/
+proc sql;
+create table Page_cats as
+select distinct Page_Cat,Pages,URL
+from bef_aft
+where not missing(page_cat) or not missing(pages) or not missing(url)
+order by Page_Cat,Pages,URL;
+quit;
+
+proc export data = Page_cats
+OUTFILE= "\\ssosn1527\sas$\個人部門\リテール営業統轄部\output\個人\225273_Peter_Kirsch\Page_cats.csv"
+dbms = csv replace ;
+run ;
+/**/
+
+
