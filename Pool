@@ -1,0 +1,2970 @@
+
+/* 2014/11/12 実行 */
+/* **************************************************************************** */
+/* 過払実績 CSV 8個目(Kabarai_Payout_Details8.csv)を追加	2011/07/11	*/
+/* **************************************************************************** */
+/* 過払実績 CSV 9個目(Kabarai_Payout_Details9.csv)を追加	2012/05/09	*/
+/* **************************************************************************** */
+
+/***********************/
+/***** Lib Setting *****/
+/***********************/
+
+/*---- Input ----*/
+libname	master	"/share/world/master" ;
+libname	record	"/share/world/master/record" ;
+
+/*---- Output ----*/
+libname	shinsei	"/share/gray" ;
+
+/*
+filename pwfile '/odd/lib/dwh.key';
+data _null_;
+   infile pwfile obs=1 length=l;
+   input @;
+   input @1 line $varying1024. l;
+   call symput('dbpass',substr(line,1,l)) ;
+run ;
+
+libname oralib oracle path=dw1 user=usr_hn02dw pw="&dbpass" access=readonly ;
+*/
+
+/***************************/
+/*** Production Program ****/
+/***************************/
+
+/***********************************************************/
+%let	cutoff_dt	= '31aug2008'd ;
+%let	closing_dt	= '22sep2008'd ;  
+
+%let	YM1		= 0901 ;	/* Bifurcation1 */
+%let	YM2		= 0906 ;	/* Bifurcation2 */
+/***********************************************************/
+
+/************************************/
+/*********** YYMM Setting ***********/
+/************************************/ 
+data _null_ ;
+        call symput ("n",intck("month",&cutoff_dt-1,intnx('day',intnx('month',today(),0),-1))) ;
+run;
+/***** Check *****/
+%put %nrstr(&n =) &n ;
+
+data _null_;
+	%macro YM1 ;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&cutoff_dt-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend ;
+	%YM1 ;
+run;
+%macro YM2 ;
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i ;
+	%end ;
+%mend ;
+%YM2 ;
+
+/************************************/
+/* CP Setting from &s_cut to &e_cut */
+/************************************/
+data _null_ ;
+s_cut 		= intck("MONTH", &cutoff_dt , &cutoff_dt) ;
+e_cut 		= intck("MONTH", &cutoff_dt , intnx("day",intnx("month",today(),0),-1)	) ;
+call symput("s_cut",compress(s_cut)) ;
+call symput("e_cut",compress(e_cut)) ;
+run ;
+%put %nrstr(&s_cut =) &s_cut ;
+%put %nrstr(&e_cut =) &e_cut ;
+
+
+/************************************/
+/********* YYYYMMDD Setting *********/
+/************************************/
+data _null_ ;
+s_yyyymmdd	=	put(year(	mdy(%substr(&&yymm&e_cut,3,2),01,%substr(&&yymm&e_cut,1,2))
+						),z4.) 
+		|| 
+		put(month(	mdy(%substr(&&yymm&e_cut,3,2),01,%substr(&&yymm&e_cut,1,2))
+						),z2.) 
+		|| 
+		put(day(	mdy(%substr(&&yymm&e_cut,3,2),01,%substr(&&yymm&e_cut,1,2))
+						),z2.) ;
+
+e_yyyymmdd	=	put(year(	intnx("day",intnx("month",
+				mdy(%substr(&&yymm&e_cut,3,2),01,%substr(&&yymm&e_cut,1,2))
+				,1),-1)		),z4.) 
+		|| 
+		put(month(	intnx("day",intnx("month",
+				mdy(%substr(&&yymm&e_cut,3,2),01,%substr(&&yymm&e_cut,1,2))
+				,1),-1)		),z2.) 
+		|| 
+		put(day(	intnx("day",intnx("month",
+				mdy(%substr(&&yymm&e_cut,3,2),01,%substr(&&yymm&e_cut,1,2))
+				,1),-1)		),z2.) ;
+call symput("s_yyyymmdd",compress(s_yyyymmdd)) ;
+call symput("e_yyyymmdd",compress(e_yyyymmdd)) ; 
+run ;
+
+
+%put %nrstr(&&yymm&e_cut =) &&yymm&e_cut ;
+%put %nrstr(&s_yyyymmdd =) &s_yyyymmdd ;
+%put %nrstr(&e_yyyymmdd =) &e_yyyymmdd ;
+
+
+
+
+
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%% */
+/* For Sale & Segment Data Set */
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%% */
+
+/***********************************************************************/
+/*************************** STV Master Data Set ***********************/
+/***********************************************************************/
+/*---------------- Production---------------- */
+data	stv_segment ;
+set	master.stv_segment 
+	(keep=	serialno
+		category_original
+		category_cutoff
+		product_flag	) ;
+run ;
+
+
+
+
+/**************************************************************/
+/***************	B-2. CUST&yymm		***************/
+/**************************************************************/
+
+/*
+data	master.T_KOKYAREC_&&yymm&i ;	
+set	oralib.T_KOKYAREC ;
+run ;
+
+proc sql ;
+create table master.shop_table_&&yymm&i as
+select
+	*
+from
+	oralib.MVW_JMISEREC_N001
+;
+quit ;
+*/
+
+
+%macro cuma ;
+%do i = &e_cut %to &e_cut ;	/***** in the previous 1month *****/
+
+/******************************************/
+/***** CUST Master = RiskDataMart Ver *****/
+/******************************************/
+
+/*
+data	cust_master_full
+	(keep=	SERIALNO
+		C002 C003 C004 C005 C006 C007 C008 C009 C010 C011 C012 C013 C014 C016 C017 C018 C019 C020
+		C021 C022 C023 C024 C025 C026 C027 C028 C029 C030 C031 C032 C033 C034 C035 C036 C037 C038
+		C039 C040 C041 C042 C043 C044 C045 C046 C047 C048 C049 C050 C051 C052 C053 CU54 CU55 CU56
+		CU57 CU58 CU59 CU60 CU61 C102 C103 C109 C110 C114 C125 C126 C128 C129 C130 C136 C139 C140
+		C141 C143 C144 C145 C151 C152 C153 C155 C156 C159 C160 C163 C169 C170 C171 C172 C173 C174
+		C175 C176 C177 C178 C179 C180 C181 C182 C183 C184 C185 C186 C187 C188 C189 C190 C191 C192
+		C193 C194 C195 C196 C197 C198 C199 C200 C201 C202 C203 C204 C205			) ;
+
+	format SERIALNO 9. 
+		C002 6.		C003 DATE9.	C004 6.		C005 6.		C006 3.		C007 DATE9. 
+		C008 2. 	C009 12. 	C010 2. 	C011 2. 	C012 8. 	C013 11.
+		C014 6.		C016 2.		C017 2.		C018 2.		C019 6.		C020 6.
+		C021 7.		C022 13.	C023 4.		C024 2.		C025 2.		C026 3.
+		C027 4.		C028 4.	 	C029 4.		C030 4.		C031 4.		C032 2.
+		C033 DATE9.	C034 11.	C035 8.		C036 2.		C037 11.	C038 DATE9.
+		C039 11.	C040 8.		C041 11.	C042 DATE9.	C043 10.	C044 2.
+		C045 DATE9.	C046 2.		C047 32.	C048 32.	C049 32.	C050 32.
+		C051 11.	C052 32.	C053 2.		CU54 $1.	CU55 6.		CU56 4.
+		CU57 4.		CU58 4.		CU59 $1.	CU60 6.		CU61 DATE9.	C102 7.
+		C103 2.		C109 4.		C110 11.	C114 2.		C125 2.		C126 DATE9.
+		C128 DATE9.	C129 6.		C130 6.		C136 DATE9.	C139 2.		C140 2.
+		C141 DATE9.	C143 DATE9.	C144 DATE9.	C145 DATE9.	C151 4.		C152 2.
+		C153 2.		C155 4.		C156 2.		C159 4.		C160 2.		C163 11.
+		C169 8.		C170 11.	C171 8.		C172 12.	C173 DATE9.	C174 2.
+		C175 DATE9.	C176 3.		C177 2.		C178 2.		C179 $1.	C180 2.
+		C181 2.		C182 32.	C183 $1.	C184 2.		C185 DATE9.	C186 $1.
+		C187 $1.	C188 4.		C189 4.		C190 4.		C191 4.		C192 4.
+		C193 DATE9.	C194 DATE9.	C195 DATE9.	C196 DATE9.	C197 DATE9.	C198 $1.
+		C199 DATE9.	C200 4.		C201 13.	C202 13.	C203 13.	C204 2.
+		C205 4.	;
+
+set	master.T_KOKYAREC_&&yymm&i
+(keep=	_COL0  _COL1  _COL2  _COL3  _COL4  _COL5  _COL6  _COL7  _COL8  _COL9  _COL10 _COL11 _COL12 _COL13 _COL14
+ 	_COL15 _COL16 _COL17 _COL18 _COL19 _COL20 _COL21 _COL22 _COL23 _COL24 _COL25 _COL26 _COL27 _COL28 _COL78 
+	_COL79 _COL80 _COL81 _COL29 _COL82 _COL83 _COL84 _COL30 _COL31 _COL32 _COL33 _COL34 _COL35 _COL36 _COL37
+	_COL38 _COL39 _COL40 _COL42 _COL43 _COL44 _COL45 _COL46 _COL47 _COL48 _COL49 _COL50 _COL85 _COL86 _COL87 
+	_COL51 _COL52 _COL53 _COL88 _COL89 _COL54 _COL55 _COL56 _COL57 _COL58 _COL59 _COL60 _COL61 _COL62 _COL63 
+	_COL64 _COL65 _COL66 _COL67 _COL68 _COL69 _COL70 _COL71 _COL72 _COL73 _COL74 _COL75 _COL76 _COL77
+
+rename=(_COL0=SERIALNO 	_COL1=C002	_COL3=C008	_COL5=C010 	_COL6=C011 	_COL7=C012 
+	_COL8=C013	_COL9=C014 	_COL10=C016 	_COL11=C017 	_COL12=C018 	_COL13=C019 
+	_COL14=C020 	_COL15=C021 	_COL16=C022	_COL17=C023 	_COL18=C024 	_COL19=C025 
+	_COL20=C026 	_COL21=C027 	_COL22=C028 	_COL23=C029 	_COL24=C030 	_COL25=C031 
+	_COL26=C032	_COL28=C034 	_COL78=C035 	_COL79=C036 	_COL80=C037 	_COL29=C039 
+	_COL82=C040 	_COL83=C041 	_COL30=C043 	_COL31=C044	_COL33=C046 	_COL34=CU56 
+	_COL35=CU57 	_COL36=CU58	_COL37=CU59 	_COL38=CU60 	_COL40=C102 	_COL42=C109 
+	_COL43=C110	_COL44=C114 	_COL45=C125 	_COL48=C129	_COL49=C130 	_COL85=C139 
+	_COL86=C140 	_COL88=C169 	_COL89=C170 	_COL54=C171	_COL57=C174 	_COL59=C176 
+	_COL60=C177 	_COL61=C178 	_COL62=C179 	_COL63=C183	_COL64=C184 	_COL66=C186
+	_COL67=C187 	_COL68=C188 	_COL69=C189	_COL70=C190 	_COL71=C191 	_COL72=C192)) ;
+
+/--- Adj ---/
+C003	= intnx('day',intnx('month',mdy(%substr(&&yymm&i..,3,2),01,%substr(&&yymm&i..,1,2)),1),-1) ;
+C009	= int(_COL4/1000000) ;
+C172	= int(_COL55/1000000) ;
+
+/--- Dummy ---/
+C004= . ;	C005= . ;	C006= . ;	C047= . ;	C048= . ;	C049= . ;	C050= . ;
+C051= . ;	C052= . ;	C053= . ;	CU54="" ;	CU55= . ;	C103= . ;	C151= . ;
+C152= . ;	C153= . ;	C155= . ;	C156= . ;	C159= . ;	C160= . ;	C163= . ;
+C180= . ;	C181= . ;	C182= . ;	C198= . ;	C199= . ;	C200= . ;	C201= . ;
+C202= . ;	C203= . ;	C204= . ;	C205= . ;
+	
+/---Date Adj ---/
+%macro dt(master=, adjust=) ;
+if	&master	=0	then 	&adjust	='31dec9999'd ;	
+else	&adjust	=mdy(int((&master-int(&master/10000)*10000)/100),&master-int(&master/100)*100,int(&master/10000)) ;
+if &adjust=. then 
+&adjust=mdy(int((&master-int(&master/10000)*10000)/100),&master-int(&master/100)*100-1,int(&master/10000)) ;		
+if &adjust=. then 
+&adjust=mdy(int((&master-int(&master/10000)*10000)/100),&master-int(&master/100)*100-2,int(&master/10000)) ;		
+if &adjust=. then 
+&adjust=mdy(int((&master-int(&master/10000)*10000)/100),&master-int(&master/100)*100-3,int(&master/10000)) ;
+%mend ;
+%dt(	master=_COL2	,adjust=C007	) ;
+%dt(	master=_COL27	,adjust=C033	) ;
+%dt(	master=_COL81	,adjust=C038	) ;
+%dt(	master=_COL84	,adjust=C042	) ;
+%dt(	master=_COL32	,adjust=C045	) ;
+%dt(	master=_COL39	,adjust=CU61	) ;
+%dt(	master=_COL46	,adjust=C126	) ;
+%dt(	master=_COL47	,adjust=C128	) ;
+%dt(	master=_COL50	,adjust=C136	) ;
+%dt(	master=_COL87	,adjust=C141	) ;
+%dt(	master=_COL51	,adjust=C143	) ;
+%dt(	master=_COL52	,adjust=C144	) ;
+%dt(	master=_COL53	,adjust=C145	) ;
+%dt(	master=_COL56	,adjust=C173	) ;
+%dt(	master=_COL58	,adjust=C175	) ;
+%dt(	master=_COL65	,adjust=C185	) ;
+%dt(	master=_COL73	,adjust=C193	) ;
+%dt(	master=_COL74	,adjust=C194	) ;
+%dt(	master=_COL75	,adjust=C195	) ;
+%dt(	master=_COL76	,adjust=C196	) ;
+%dt(	master=_COL77	,adjust=C197	) ;
+run ;
+*/
+
+
+/*
+proc sort data = cust_master_full out= temp ;
+by c002 ;
+run ;
+
+data	shop_table_master ;
+set	master.shop_table_&&yymm&i
+	(keep=	_col0
+		_col2
+		_col3
+		_col4
+	rename=(_col0 =c002
+		_col2 =c004
+		_col3 =c005
+		_col4 =c006)
+	) ;
+run ;
+proc sort data=shop_table_master ;
+by c002 ;
+run ;
+
+
+proc sql;
+create table temp_adj as
+	select
+		SERIALNO,
+		b.C002, 
+		C003, 
+		b.C004, b.C005, b.C006, 
+		C007, C008, C009, C010, C011, C012, C013, C014, C016, C017, C018, C019, C020,
+		C021, C022, C023, C024, C025, C026, C027, C028, C029, C030, C031, C032, C033, C034, C035, C036, C037, C038,
+		C039, C040, C041, C042, C043, C044, C045, C046, C047, C048, C049, C050, C051, C052, C053, CU54, CU55, CU56,
+		CU57, CU58, CU59, CU60, CU61, C102, C103, C109, C110, C114, C125, C126, C128, C129, C130, C136, C139, C140,
+		C141, C143, C144, C145, C151, C152, C153, C155, C156, C159, C160, C163, C169, C170, C171, C172, C173, C174,
+		C175, C176, C177, C178, C179, C180, C181, C182, C183, C184, C185, C186, C187, C188, C189, C190, C191, C192,
+		C193, C194, C195, C196, C197, C198, C199, C200, C201, C202, C203, C204, C205
+	from
+		temp			a
+		inner join
+		shop_table_master	b
+	on
+		a.c002 = b.c002
+	;
+quit;
+
+data	cust_master_full&&yymm&i ;
+	format SERIALNO 9. 
+		C002 6.		C003 DATE9.	C004 6.		C005 6.		C006 3.		C007 DATE9. 
+		C008 2. 	C009 12. 	C010 2. 	C011 2. 	C012 8. 	C013 11.
+		C014 6.		C016 2.		C017 2.		C018 2.		C019 6.		C020 6.
+		C021 7.		C022 13.	C023 4.		C024 2.		C025 2.		C026 3.
+		C027 4.		C028 4.	 	C029 4.		C030 4.		C031 4.		C032 2.
+		C033 DATE9.	C034 11.	C035 8.		C036 2.		C037 11.	C038 DATE9.
+		C039 11.	C040 8.		C041 11.	C042 DATE9.	C043 10.	C044 2.
+		C045 DATE9.	C046 2.		C047 32.	C048 32.	C049 32.	C050 32.
+		C051 11.	C052 32.	C053 2.		CU54 $1.	CU55 6.		CU56 4.
+		CU57 4.		CU58 4.		CU59 $1.	CU60 6.		CU61 DATE9.	C102 7.
+		C103 2.		C109 4.		C110 11.	C114 2.		C125 2.		C126 DATE9.
+		C128 DATE9.	C129 6.		C130 6.		C136 DATE9.	C139 2.		C140 2.
+		C141 DATE9.	C143 DATE9.	C144 DATE9.	C145 DATE9.	C151 4.		C152 2.
+		C153 2.		C155 4.		C156 2.		C159 4.		C160 2.		C163 11.
+		C169 8.		C170 11.	C171 8.		C172 12.	C173 DATE9.	C174 2.
+		C175 DATE9.	C176 3.		C177 2.		C178 2.		C179 $1.	C180 2.
+		C181 2.		C182 32.	C183 $1.	C184 2.		C185 DATE9.	C186 $1.
+		C187 $1.	C188 4.		C189 4.		C190 4.		C191 4.		C192 4.
+		C193 DATE9.	C194 DATE9.	C195 DATE9.	C196 DATE9.	C197 DATE9.	C198 $1.
+		C199 DATE9.	C200 4.		C201 13.	C202 13.	C203 13.	C204 2.
+		C205 4.	;
+set	temp_adj ;
+run ;
+
+proc sort data = cust_master_full&&yymm&i ;
+by serialno ;
+run ;
+*/
+
+/*************************************/
+/* 1. RDM CUST */
+/*************************************/
+/*
+data	cust1 ;
+merge	risklib.cust&&yymm&i
+(in=a	
+rename=(C&&yymm&i..002=C002 C&&yymm&i..003=C003 C&&yymm&i..004=C004 C&&yymm&i..005=C005 C&&yymm&i..006=C006
+	C&&yymm&i..007=C007 C&&yymm&i..008=C008 C&&yymm&i..009=C009 C&&yymm&i..010=C010 C&&yymm&i..011=C011
+	C&&yymm&i..012=C012 C&&yymm&i..013=C013 C&&yymm&i..014=C014 C&&yymm&i..016=C016 C&&yymm&i..017=C017
+	C&&yymm&i..018=C018 C&&yymm&i..019=C019 C&&yymm&i..020=C020 C&&yymm&i..021=C021 C&&yymm&i..022=C022
+	C&&yymm&i..023=C023 C&&yymm&i..024=C024 C&&yymm&i..025=C025 C&&yymm&i..026=C026 C&&yymm&i..027=C027
+	C&&yymm&i..028=C028 C&&yymm&i..029=C029 C&&yymm&i..030=C030 C&&yymm&i..031=C031 C&&yymm&i..032=C032
+	C&&yymm&i..033=C033 C&&yymm&i..034=C034 C&&yymm&i..035=C035 C&&yymm&i..036=C036 C&&yymm&i..037=C037
+	C&&yymm&i..038=C038 C&&yymm&i..039=C039 C&&yymm&i..040=C040 C&&yymm&i..041=C041 C&&yymm&i..042=C042
+	C&&yymm&i..043=C043 C&&yymm&i..044=C044 C&&yymm&i..045=C045 C&&yymm&i..046=C046 C&&yymm&i..047=C047
+	C&&yymm&i..048=C048 C&&yymm&i..049=C049 C&&yymm&i..050=C050 C&&yymm&i..051=C051 C&&yymm&i..052=C052
+	C&&yymm&i..053=C053 CU&&yymm&i..54=CU54 CU&&yymm&i..55=CU55 CU&&yymm&i..56=CU56 CU&&yymm&i..57=CU57
+	CU&&yymm&i..58=CU58 CU&&yymm&i..59=CU59 CU&&yymm&i..60=CU60 CU&&yymm&i..61=CU61 C&&yymm&i..102=C102
+	C&&yymm&i..103=C103 C&&yymm&i..109=C109 C&&yymm&i..110=C110 C&&yymm&i..114=C114 C&&yymm&i..125=C125
+	C&&yymm&i..126=C126 C&&yymm&i..128=C128 C&&yymm&i..129=C129 C&&yymm&i..130=C130 C&&yymm&i..136=C136
+	C&&yymm&i..139=C139 C&&yymm&i..140=C140 C&&yymm&i..141=C141 C&&yymm&i..143=C143 C&&yymm&i..144=C144
+	C&&yymm&i..145=C145 C&&yymm&i..151=C151 C&&yymm&i..152=C152 C&&yymm&i..153=C153 C&&yymm&i..155=C155
+	C&&yymm&i..156=C156 C&&yymm&i..159=C159 C&&yymm&i..160=C160 C&&yymm&i..163=C163 C&&yymm&i..169=C169
+	C&&yymm&i..170=C170 C&&yymm&i..171=C171 C&&yymm&i..172=C172 C&&yymm&i..173=C173 C&&yymm&i..174=C174
+	C&&yymm&i..175=C175 C&&yymm&i..176=C176 C&&yymm&i..177=C177 C&&yymm&i..178=C178 C&&yymm&i..179=C179
+	C&&yymm&i..180=C180 C&&yymm&i..181=C181 C&&yymm&i..182=C182 C&&yymm&i..183=C183 C&&yymm&i..184=C184
+	C&&yymm&i..185=C185 C&&yymm&i..186=C186 C&&yymm&i..187=C187 C&&yymm&i..188=C188 C&&yymm&i..189=C189
+	C&&yymm&i..190=C190 C&&yymm&i..191=C191 C&&yymm&i..192=C192 C&&yymm&i..193=C193 C&&yymm&i..194=C194
+	C&&yymm&i..195=C195 C&&yymm&i..196=C196 C&&yymm&i..197=C197 C&&yymm&i..198=C198 C&&yymm&i..199=C199
+	C&&yymm&i..200=C200 C&&yymm&i..201=C201 C&&yymm&i..202=C202 C&&yymm&i..203=C203 C&&yymm&i..204=C204
+	C&&yymm&i..205=C205))
+cust_master_full&&yymm&i	
+(in=b	keep	=serialno	) ;
+by	serialno ;
+if	a=1 and b=1 ;
+run ;
+*/
+
+
+/*************************************/
+/* 2. Paid After 5years CUST + Dummy */
+/*************************************/
+/*
+data	cust2 ;
+merge	cust_master_full&&yymm&i 
+(in=a	
+keep=	SERIALNO 
+	C002 C003 C004 C005 C006 C007 C008 C009 C010 C011 C012 C013 C014 C016 C017 C018 C019 C020
+ 	C021 C022 C023 C024 C025 C026 C027 C028 C029 C030 C031 C032 C033 C034 C035 C036 C037 C038
+ 	C039 C040 C041 C042 C043 C044 C045 C046 C047 C048 C049 C050 C051 C052 C053 CU54 CU55 CU56
+ 	CU57 CU58 CU59 CU60 CU61 C102 C103 C109 C110 C114 C125 C126 C128 C129 C130 C136 C139 C140
+	C141 C143 C144 C145 C151 C152 C153 C155 C156 C159 C160 C163 C169 C170 C171 C172 C173 C174
+	C175 C176 C177 C178 C179 C180 C181 C182 C183 C184 C185 C186 C187 C188 C189 C190 C191 C192
+ 	C193 C194 C195 C196 C197 C198 C199 C200 C201 C202 C203 C204 C205 )
+ 	cust1	
+	(in=b	keep=	serialno	)
+	;
+
+by	serialno ;
+if	a=1 and b=0 ;
+
+run ;
+
+
+data	cust_master&&yymm&i
+(keep=	SERIALNO
+ 	C002 C003 C004 C005 C006 C007 C008 C009 C010 C011 C012 C013 C014 C016 C017 C018 C019 C020
+ 	C021 C022 C023 C024 C025 C026 C027 C028 C029 C030 C031 C032 C033 C034 C035 C036 C037 C038
+ 	C039 C040 C041 C042 C043 C044 C045 C046 					     Cu56 
+	Cu57 Cu58 Cu59 Cu60 Cu61 C102      C109 C110 C114 C125 C126 C128 C129 C130 C136 C139 C140 
+	C141 C143 C144 C145 					    C169 C170 C171 C172 C173 C174
+	C175 C176 C177 C178 C179                C183 C184 C185 C186 C187 C188 C189 C190 C191 C192 
+	C193 C194 C195 C196 C197 C198					 ) ;
+
+set	cust1	(in=a)
+	cust2	(in=b)
+	;
+
+if	a	then	
+	do ;
+			c198=c198 ;
+	end ;
+else	do ;
+		if	c006=6	then	
+			do ;
+				c198='1' ;
+			end ;
+		else	do ;
+				c198='0' ;
+			end ;
+	end ;
+
+run ;
+
+proc sort data=cust_master&&yymm&i ;
+by serialno ;
+run ;
+*/
+
+
+/***** Balance *****/
+/*
+proc sql ;
+create table acco as
+select
+	serialno,
+	sum(ac&&yymm&i..28) as ac28
+from
+	risklib.acco&&yymm&i
+group by
+	serialno
+	;
+quit ;
+*/
+
+/***** Sasles Office Type *****/
+/*
+data	cu54 ;
+set	risklib.cust&&yymm&i	(keep=	serialno 
+					c&&yymm&i..003 
+					cu&&yymm&i..54	
+				rename=(c&&yymm&i..003=c003
+					cu&&yymm&i..54=cu54)
+				)
+	risklib.cust0509	(keep=	serialno 
+					c0509003 
+					cu050954	
+				rename=(c0509003=c003 
+					cu050954=cu54)
+				) ;
+run ;
+proc sort data = cu54 ;
+by 	serialno
+	decending c003 ;
+run ;
+
+proc sort data = cu54 nodupkey out=cu54_cust ;
+by 	serialno ;
+run ;
+*/
+
+/*********************************/
+/********** CUST Master **********/
+/*********************************/
+/*
+data	master.cust_master&&yymm&i ;
+format	
+SERIALNO	9.
+C002	6.
+C003	DATE9.
+C004	6.
+C005	6.
+C006	3.
+C007	DATE9.
+C008	2.
+C009	12.
+C010	2.
+C011	2.
+C012	8.
+C013	11.
+C014	6.
+C016	2.
+C017	2.
+C018	2.
+C019	6.
+C020	6.
+C021	7.
+C022	13.
+C023	4.
+C024	2.
+C025	2.
+C026	3.
+C027	4.
+C028	4.
+C029	4.
+C030	4.
+C031	4.
+C032	2.
+C033	DATE9.
+C034	11.
+C035	8.
+C036	2.
+C037	11.
+C038	DATE9.
+C039	11.
+C040	8.
+C041	11.
+C042	DATE9.
+C043	10.
+C044	2.
+C045	DATE9.
+C046	2.
+C047	32.
+CU54	$1.
+CU56	4.
+CU57	4.
+CU58	4.
+CU59	$1.
+CU60	6.
+CU61	DATE9.
+C102	7.
+C109	4.
+C110	11.
+C114	2.
+C125	2.
+C126	DATE9.
+C128	DATE9.
+C129	6.
+C130	6.
+C136	DATE9.
+C139	2.
+C140	2.
+C141	DATE9.
+C143	DATE9.
+C144	DATE9.
+C145	DATE9.
+C169	8.
+C170	11.
+C171	8.
+C172	12.
+C173	DATE9.
+C174	2.
+C175	DATE9.
+C176	3.
+C177	2.
+C178	2.
+C179	$1.
+C183	$1.
+C184	2.
+C185	DATE9.
+C186	$1.
+C187	$1.
+C188	4.
+C189	4.
+C190	4.
+C191	4.
+C192	4.
+C193	DATE9.
+C194	DATE9.
+C195	DATE9.
+C196	DATE9.
+C197	DATE9.
+C198	$1.
+;
+merge	cust_master&&yymm&i	(in=a				)
+	acco			(in=b	keep=serialno ac28	) 
+	cu54_cust		(in=c	keep=serialno cu54	)
+	;
+by 	serialno ;
+if	a ;
+
+if	b	then	c047=ac28	;
+else			c047=0		;
+
+
+if	c	then	cu54=cu54	;
+else			cu54=" "	;
+
+drop ac28 ;
+
+run ;
+*/
+
+
+data	cust&&yymm&i
+(
+keep=	SERIALNO
+	C002
+	C003
+	C027
+	C028
+	C029
+	C030
+	C031
+	C032
+	C039
+	C042
+	C047
+	C136
+	C143
+	C144
+	C145
+	C198	);
+
+merge	master.cust_master&&yymm&i 	(in=a				)
+	stv_segment			(in=b	keep=serialno		) ;
+by	serialno ;
+if	a and b ;
+run ;
+
+
+/********** Revised Missing Data **********/
+
+%let	j = %eval(&i-1) ;
+data	del ;
+merge	cust&&yymm&i		(in=a	keep=serialno	)
+	shinsei.cust&&yymm&j	(in=b			) ;
+by	serialno ;
+if	a=0 and b=1 ;
+format	c003 DATE9. ;
+C003	= intnx('day',intnx('month',mdy(%substr(&&yymm&i..,3,2),01,%substr(&&yymm&i..,1,2)),1),-1) ;
+run ;
+
+data	shinsei.cust&&yymm&i ;
+set	cust&&yymm&i
+	del ;
+run ;
+
+proc sort data = shinsei.cust&&yymm&i ;
+by serialno ;
+run ;
+
+%end ;
+
+%mend ;
+%cuma ;
+
+
+
+/**************************************************************/
+/***************	B-4. IRRL Master	***************/
+/**************************************************************/
+
+%macro irrl ;
+
+%do i = &e_cut %to &e_cut ;	/***** in the previous 1month *****/
+
+data	shinsei.irrl&&yymm&i 
+	(keep=	serialno
+		ir002
+		ir003
+		ir004	) ;
+
+format	serialno	9.
+	ir002		DATE9.
+	ir003		32.
+	ir004		32. ;
+	
+merge	stv_segment			(in=a	keep=serialno			)
+	master.irrl_balance&&yymm&i	(in=b	keep=serialno irrl_balance	
+						rename=(irrl_balance=ir004)	)
+	shinsei.cust&&yymm&i		(in=c	keep=serialno c047		
+						rename=(c047=ir003)		) ;
+
+by	serialno ;
+if	a ;
+	/*** Adj ***/
+	ir002	= intnx('day',intnx('month',mdy(%substr(&&yymm&i..,3,2),01,%substr(&&yymm&i..,1,2)),1),-1) ;
+run ;
+
+%end ;
+
+%mend ;
+%irrl ;
+
+
+
+/**************************************************************/
+/***************	A-1. Pool Target Master	***************/
+/**************************************************************/
+
+/***** One Time Data @ Cut Off Point *****/
+/*
+%macro pool ;
+
+data	shinsei.pool&yymm0 
+	
+	(keep=	SERIALNO
+		cm002
+		cm003
+		cm004
+		cm005
+		cm006
+		cm007
+		cm008
+		cm009) ;
+
+	format	SERIALNO	9.
+		cm002		DATE9.		/* Account Date		*
+		cm003		$10.		/* Original Segment 	*
+		cm004		$10.		/* Cutoff Segment 	*	
+		cm005		$10.		/* GZ Segment		*
+		cm006		$1.		/* WO Flag		*
+		cm007		32.		/* Loan Balance		*
+		cm008		32. 		/* IRRL Balance		*
+		cm009		$1.		/* Product Flag		*
+		;
+
+merge	stv_segment	
+	(in=a	keep=	serialno
+			category_original
+			category_cutoff
+			product_flag	)
+	shinsei.cust&yymm0 	
+	(in=b	keep=	serialno
+			c003
+			c047
+			c143
+			c198		
+		rename=(c003=cm002
+			c047=cm007
+			c198=cm006)	)
+	shinsei.irrl&yymm0 
+	(in=c	keep=	serialno
+			ir004		
+		rename=(ir004=cm008)	) ;
+
+by	serialno ;
+if	a ;
+
+
+/********** Calculation by Reactivation **********
+length	book 		$12.
+	irrl_flag	$12. 
+	cm003		$10.
+	cm004		$10.	
+	cm005		$10. ;
+
+/*********************************************************************************************
+/* ----- Production -------------------------------------------------------------------------*
+
+/*STV_Original_Segment	*
+cm003=category_original ;
+
+/*STV_Cutoff_Segment	*
+cm004=category_cutoff ;
+
+/*Product Flag		*
+cm009=product_flag ;
+
+/***** Book & IRRL Flag *****
+if	cm007>0 and cm006='0'	then	book='onbook'	;
+else if	cm007>0 and cm006='1'	then	book='offbook'	;
+else					book='paidoff'	;
+
+if	cm008>=0 or cm008 = .	then	irrl_flag= '+'	;
+else if	cm008< 0		then	irrl_flag= '-'	;
+else					irrl_flag= 'N'	;
+
+/********** GZ Segmentation **********
+if	cm004 ='C' 	then	cm005='C' ;
+
+else if	cm004 ='A'	then 
+	do ;
+	if	irrl_flag= '+' 				then	cm005='A-1' ;
+	else if	irrl_flag= '-' and book =  'onbook'	then	cm005='A-2-1' ;
+	else if	irrl_flag= '-' and book ne 'onbook'	then	cm005='A-2-2' ;
+	else							cm005='A' ;
+	end ;
+
+else if	cm004 = 'B'	then
+	do ;
+		if	book='onbook'			then	cm005='B-1' ;
+		else						cm005='B-2' ;
+	end ;
+
+else if	cm004 = 'Purewhite'				then	cm005='W' ;
+
+else								cm005='N' ;
+
+run ;
+
+%mend ;
+%pool ;
+*/
+
+
+
+
+/**************************************************************/
+/***************	B-1. Transaction Master	***************/
+/**************************************************************/
+
+/*
+%macro tori ;
+%do i = 1 %to 100 ;
+	data	work.torihiki_&i ;
+	set	record.torihiki_&i ;
+
+	where	trrk000 GE &s_yyyymmdd and trrk000 LE &e_yyyymmdd ;				
+	run ;
+%end ;
+%mend ;
+%tori ;
+*/
+/* Pls input YYYYMMDD for example 20080401 */
+
+
+
+
+/*--------------------------------------------------------------*/
+/*
+%macro mint ;
+
+	data work.rireki ;
+		set 
+			%do i = 1 %to 100 ;
+				work.torihiki_&i
+			%end ;
+		;
+	run ;
+%mend ;
+%mint ;
+*/
+/*--------------------------------------------------------------*/
+
+
+
+
+%macro trans ;
+
+%do i = &e_cut %to &e_cut ;	/***** in the previous 1month *****/
+
+/*
+data	tran&&yymm&i
+	( rename = (
+			TRRK000 = TR003
+			TRRK001 = TR004
+			TRRK002 = TR005
+			TRRK003 = TR006
+			TRRK004 = TR007
+			TRRK005 = TR008
+			TRRK006 = TR009
+			TRRK007 = TR010
+			TRRK008 = TR011
+			TRRK009 = TR012
+			TRRK010 = TR013
+			TRRK011 = TR014
+			TRRK012 = TR015
+			TRRK013 = TR016
+			TRRK014 = TR017
+			TRRK015 = TR018
+			TRRK016 = TR019
+			TRRK017 = TR020
+			TRRK018 = TR021
+			TRRK019 = TR022
+			TRRK020 = TR023
+			TRRK021 = TR024
+			TRRK022 = TR025
+			TRRK023 = TR026
+			TRRK024 = TR027
+			TRRK025 = TR028
+			TRRK026 = TR029
+			TRRK027 = TR030
+			TRRK028 = TR031
+			TRRK029 = TR032
+			TRRK030 = TR033
+			TRRK031 = TR034
+			TRRK032 = TR035
+			TRRK033 = TR036
+			TRRK034 = TR037
+			TRRK035 = TR038
+			TRRK036 = TR039
+			TRRK037 = TR040
+			TRRK038 = TR041
+			TRRK039 = TR042
+			TRRK040 = TR043
+			TRRK041 = TR044
+			TRRK042 = TR045
+			TRRK043 = TR046
+			TRRK044 = TR047
+			TRRK045 = TR048
+			TRRK046 = TR049
+			TRRK047 = TR050
+			TRRK048 = TR051
+			TRRK049 = TR052
+			TRRK050 = TR053
+			TRRK051 = TR054
+			 )) ;
+	set	rireki ( drop = trrk052 trrk053 trrk054 trrk055 trrk056 trrk057 ) ;
+run ;
+
+proc sort data=tran&&yymm&i out= master.transaction_&&yymm&i ;
+by serialno ;
+run ;
+*/
+
+proc sort data=master.transaction_&&yymm&i out= tran ;
+by serialno ;
+run ;
+
+data	shinsei.tran&&yymm&i ;
+merge	tran				(in=a				)
+	stv_segment			(in=b	keep=	serialno	) ;
+by	serialno ;
+if	a and b ;
+run ;
+
+
+%end ;
+%mend ;
+%trans ;
+
+
+
+
+/**************************************************************/
+/***************	A-2. Previous Segment	***************/
+/**************************************************************/
+
+/********** ----- Off Set ----- Payment & Loan Transaction ***********/
+
+%macro loanpay ;
+
+%do i = &e_cut %to &e_cut ;	/***** in the previous 1month *****/
+
+		data loan_pay ;
+
+		set	shinsei.tran&&yymm&i
+		(rename = (
+			tr004=seq_no
+			tr007=rireki_bunrui
+			tr008=rireki_keizoku
+			tr009=shori_tenban
+			tr010=jitaten_kubun
+			tr011=rireki_shori_kubun
+			tr012=torikesi_kubun
+			tr013=torihiki_kubun
+			tr014=torihiki_kingaku
+			tr015=keiyaku_houhou
+			tr016=b_keiyaku_gaku
+			tr017=b_apr
+			tr018=b_songai_apr
+			tr019=b_shubetu
+			tr020=b_keitai
+			tr021=b_cycle
+			tr022=b_yakujo
+			tr023=b_siharai
+			tr024=b_bonus_1
+			tr025=b_bonus_2
+			tr026=b_bonus_yen
+			tr027=keiyaku_gaku
+			tr028=apr
+			tr029=songai_apr
+			tr030=shubetu
+			tr031=keitai
+			tr032=cycle
+			tr035=bonus_1
+			tr036=bonus_2
+			tr037=bonus_yen
+			tr038=gengaku_gankin
+			tr039=yakujo_husoku
+			tr040=songai_husokku
+			tr042=okure
+			tr043=songai
+			tr044=zan
+			tr045=jikai_bi
+			tr046=current_horyu_kin
+			tr047=gengaku_yakujo
+			tr048=gengaku_songai
+			tr049=gengaku_horyu
+			tr051=gankin
+			tr052=risoku
+			tr053=songai_kin
+			tr054=horyu_kin )) 
+			;
+
+		where rireki_bunrui in (3,4) ;	/* 3=loan , 4=payment	*/
+
+		/** Num -> SAS Date (torihiki_bi);*/
+
+		format torihiki_bi yymmdd10.;
+		y = int(tr006 / 10000);
+		m = int((tr006-(y * 10000)) / 100);
+		d = tr006-(y * 10000)-(m * 100);
+		torihiki_bi = mdy(m,d,y);
+
+		
+		/** Num -> SAS Date (shori_bi);*/
+		format shori_bi yymmdd10.;
+		y = int(tr003 / 10000);
+		m = int((tr003-(y * 10000)) / 100);
+		d = tr003-(y * 10000)-(m * 100);
+		shori_bi = mdy(m,d,y);
+
+		if torikesi_kubun >= 1 then torikesi_kubun = 1;
+
+		format shori_jikan time.;
+
+		if length(compress(put(tr005,10.))) >=7 then do;
+			w_shori_jikan = int(tr005 / 100);
+			h = int(w_shori_jikan / 10000);
+			m = int((w_shori_jikan-(h * 10000)) / 100);
+			s = mod(w_shori_jikan,100);
+			shori_jikan = hms(h,m,s);
+		end;
+		else do;
+			w_shori_jikan = int(tr005 / 100);
+			h = int(w_shori_jikan / 10000);
+			m = int((w_shori_jikan-(h * 10000)) / 100);
+			s = mod(w_shori_jikan,100);
+			shori_jikan = hms(h,m,s);
+			if not(h <= 23 and m <= 59 and s <= 59) then do;
+				w_shori_jikan = int(tr005 / 100);
+				h = int(w_shori_jikan / 10000);
+				m = int((w_shori_jikan-(h * 10000)) / 100);
+				s = mod(w_shori_jikan,100);
+				shori_jikan = hms(h,m,s);
+			end;
+		end;
+
+		/** Cancel Off-set Shori-Jikan ;*/
+		off_set_shori_jikan = int(tr005 / 1000000);
+		run;
+
+		/* *** SET OFF ********************************/
+		proc sort data = loan_pay ;
+		by
+		SERIALNO
+		ACC_R_NO
+		torihiki_bi
+		rireki_bunrui
+		rireki_keizoku
+		rireki_shori_kubun
+		torihiki_kubun
+		torihiki_kingaku
+		zan
+		gankin
+		risoku
+		songai_kin
+		horyu_kin
+		torikesi_kubun ;
+		run ;
+
+		data loan_pay ;
+		set loan_pay ;
+		by
+		SERIALNO
+		ACC_R_NO
+		torihiki_bi
+		rireki_bunrui
+		rireki_keizoku
+		rireki_shori_kubun
+		torihiki_kubun
+		torihiki_kingaku
+		zan
+		gankin
+		risoku
+		songai_kin
+		horyu_kin
+		torikesi_kubun
+		;
+		nn + 1;
+		f = first.torikesi_kubun;
+		if first.torikesi_kubun then n = 0;
+		n + 1;
+		run;
+
+		proc sql;
+		create table work.del as
+		select
+		t1.nn
+		from
+		loan_pay t1 inner join loan_pay t2
+		on
+		t1.SERIALNO = t2.SERIALNO       and
+		t1.ACC_R_NO = t2.ACC_R_NO       and
+		t1.torihiki_bi = t2.torihiki_bi and
+		t1.rireki_bunrui = t2.rireki_bunrui     and
+		t1.rireki_keizoku = t2.rireki_keizoku   and
+		t1.rireki_shori_kubun = t2.rireki_shori_kubun   and
+		t1.torihiki_kubun = t2.torihiki_kubun   and
+		t1.torihiki_kingaku = t2.torihiki_kingaku       and
+		t1.zan = t2.zan                 and
+		t1.gankin = t2.gankin           and
+		t1.risoku = t2.risoku           and
+		t1.songai_kin = t2.songai_kin   and
+		t1.horyu_kin = t2.horyu_kin     and
+		(
+			(t1.torikesi_kubun = 0 and t2.torikesi_kubun ne 0) or
+			(t1.torikesi_kubun ne 0 and t2.torikesi_kubun = 0)
+		)                               and
+		t1.n = t2.n
+		;
+		quit;
+
+		proc sort data = loan_pay ; by nn ; run ;
+		proc sort data = work.del ; by nn ; run ;
+
+
+	/***** Loan & Payment Master Data ----> Offset Done *****/
+	data	loan_pay&&yymm&i ;
+	merge
+		work.loan_pay	(in = a)
+		work.del	(in = b) ;
+	by nn;
+	if a = 1 and b = 1 then delete;
+	run;
+
+	/***** Bifulcation Master Data *****/
+	data	bifur_trigger&&yymm&i ;
+	format	serialno	10.
+		acc_r_no	10.
+		tr005		Time.
+		tr006		Date. ;
+
+	merge	loan_pay&&yymm&i
+		(in=a
+		keep =	serialno
+			acc_r_no
+			rireki_bunrui
+			torikesi_kubun
+			torihiki_kubun
+			torihiki_kingaku
+			torihiki_bi
+			shori_jikan
+			apr
+			songai_apr
+			risoku
+			songai_kin
+			keiyaku_gaku
+		
+		rename=(rireki_bunrui=tr007
+			torikesi_kubun=tr012
+			torihiki_kubun=tr013
+			torihiki_kingaku=tr014
+			torihiki_bi=tr006
+			shori_jikan=tr005
+			apr=tr028
+			songai_apr=tr029
+			risoku=tr052
+			songai_kin=tr053
+			keiyaku_gaku=tr027))
+		shinsei.bmmb
+		(in=b
+		keep=	serialno
+			acc_r_no
+			bm004		/*	Max MCS Balance			*/
+			bm006		/*	APR				*/
+			bm007		/*	APR Damaged			*/
+			bm008		/*	Trigger IRRL APR 		*/
+			bm009		/*	Trigger IRRL APR Damaged	*/
+		)
+		;
+
+	by	serialno acc_r_no ;
+	if	a ;
+
+		/***** Bifurcation_Flag *****/
+		if	tr007=3	then	bifurcation_flag=1 ;
+		else if	tr007=4	then	bifurcation_flag=2 ;
+		else			bifurcation_flag=0 ;
+
+		/***** IRRL APR *****/
+		if	tr027	< 100000	then	irrl_contracted_interest=20000 ;
+		else if tr027	< 1000000 	then	irrl_contracted_interest=18000 ;
+		else					irrl_contracted_interest=15000 ;
+
+		irrl_damaged_interest=irrl_contracted_interest*1.46 ;	
+
+		/***** Target *****/
+		if	tr012=0
+		and	tr006 >=			   mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2))
+		and	tr006 <=intnx('day',intnx('month', mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2)) ,1),-1)
+		and
+		(	
+			tr007=3
+			and
+			tr013 not in(51)
+
+			or
+
+			tr007=4
+			and
+			tr013 not in(21,31)
+			and
+			(	
+				( 	tr052>0
+					and
+					tr028 > bm008
+					and
+					bm008 ne .		)
+				or
+
+				(	tr053>0
+					and
+					tr029 > bm009
+					and
+					bm009 ne .		)
+			)
+		) ;
+
+		/***** Target *****/		
+		if	tr007=4 
+		and	tr028<=15000 
+		and	tr029<=15000*1.46	then	delete ;
+
+	run ;
+
+%end;
+
+%mend ;
+%loanpay ;
+
+	
+
+
+/******* B Seg Bifurcation Trigger & Data Missing Check ******/
+/*----- Bifurcation Trigger Check --------*/
+/*
+data	b_seg ;
+set	shinsei.pool080922 ;
+where	cm005 in('B-1','B-2') ;
+run ;
+
+data	b_seg_bifur_trigger&&yymm&e_cut ;
+merge	bifur_trigger&&yymm&e_cut
+	(in=a			)
+	b_seg	
+	(in=b	keep=serialno	) ;
+by	serialno ;
+if	a and b and tr007=4
+	or
+	b=1 and tr007=4 and bm008=. ;
+run ;
+proc export data = b_seg_bifur_trigger&&yymm&e_cut
+file="/home/risk-saiken/mkawanis/b_seg_bifur_trigger&&yymm&e_cut...csv" replace ;
+run ;
+*/
+
+
+
+
+
+%macro prese ;
+/*************************************************/
+/***** Cut Off Data + in the previous 1month *****/
+/*************************************************/
+%if	%eval(&e_cut) <= 1	%then 	%do ;
+
+%let	start = &s_cut ;
+
+					%end ;
+
+/*************************************************/
+/***** In the previous 1month *****/
+/*************************************************/
+%else					%do ;
+%let	start = &e_cut ;	
+					%end ;
+
+
+%do i = &start %to &e_cut ;
+
+%let	j =%eval(&i-1) ;
+
+
+	/***** Segment Master @ CUT OFF *****/
+%if	&&yymm&i = &yymm0  %then	%do ;
+	data shinsei.segm&&yymm&i 
+	(keep=		serialno
+			se002
+			se003
+			se004
+			se005
+			se006
+			se007
+			se008
+			se009
+			se010	
+			se011
+			se012
+			se013) ;
+	format	SERIALNO	9.
+		se002		DATE9.	/* Account Date			*/
+		se003		$10.	/* GZ Segment@Cutoff		*/
+		se004		$10.	/* GZ Segment@MonthEnd 		*/
+		se005		DATE9.	/* GZ Segment Date		*/
+		se006		10.		/* Bifurcation Flag	*/
+		se007		10.		/* New Volume		*/
+		se008		10.		/* Merger & Demerger	*/
+		se009		$1.		/* Product Flag@0712	*/
+		se010		$1.		/* WO Flag @ Cut Off	*/
+		se011		32.		/* Bifurcation Date BOP SAS Balance	*/
+		se012		32.		/* Bifurcation Date BOP IRRL Balance	*/
+		se013		DATE9.		/* Bifurcation Flag Setting Date	*/
+		;
+	set	shinsei.pool&yymm0
+		(keep=	serialno
+			cm002
+			cm005
+			cm006
+			cm009	
+		rename=(cm002=se005
+			cm005=se003
+			cm006=se010
+			cm009=se009)	) ;
+	se002=intnx('day',intnx('month',mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2)),1),-1) ;
+	se004=se003 ;
+	se006=. ;
+	se007=0 ;
+	se008=. ;
+	se011=. ;
+	se012=. ;
+	se013=. ;
+	run ;
+
+
+%end ;
+%else %do ;
+	/************************************************/
+	/*	Reactivation				*/
+	/************************************************/
+	data	loan(keep=serialno shori_bi torihiki_bi ) ;
+	set	loan_pay&&yymm&i ;
+	where	rireki_bunrui=3
+		and
+		torikesi_kubun=0
+		and
+		torihiki_kubun ne 51 
+		and
+		torihiki_bi>=mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2))
+		and
+		torihiki_bi<=intnx('day',intnx('month', mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2)),1),-1) ;
+	run ;
+
+	proc sort data=loan ;
+	by serialno torihiki_bi ;
+	run ;
+	
+	/***** First Transaction Record *****/
+	proc sort data=loan nodupkey out = loan_transaction ;
+	by serialno ;
+	run ;
+
+
+	data	segm&&yymm&i
+	(keep=		serialno
+			se002
+			se003
+			se004
+			se005
+			se006
+			se007
+			se008
+			se009
+			se010	
+			se011
+			se012
+			se013
+			) ;
+	format	SERIALNO	9.
+		se002		DATE9.	/* Account Date			*/
+		se003		$10.	/* GZ Segment@Cutoff		*/
+		se004		$10.	/* GZ Segment@MonthEnd 		*/
+		se005		DATE9.	/* GZ Segment Date		*/
+		se006		10.		/* Bifurcation Flag	*/
+		se007		10.		/* New Volume		*/
+		se008		10.		/* Merger & Demerger	*/
+		se009		$1.		/* Product Flag@0712	*/
+		se010		$1.		/* WO Flag @ Cut Off	*/
+		se011		32.		/* Bifurcation Date BOP SAS Balance	*/
+		se012		32.		/* Bifurcation Date BOP IRRL Balance	*/
+		se013		DATE9.		/* Bifurcation Flag Setting Date	*/
+		;
+
+	merge	shinsei.segm&&yymm&j	(in=a	keep=	serialno
+							se003			/* GZ Seg @ Cut Off	*/
+							se004			/* GZ Seg @ EOP		*/
+							se005			/* GZ Seg Date		*/
+							se006			/* Bifurcation Flag	*/
+							se007			/* New Vol Flag		*/
+							se009			/* Product Flag		*/
+							se010			/* WO Flag @ Cut Off	*/
+							se011			/* Bifurcation Date BOP SAS Balance	*/
+							se012			/* Bifurcation Date BOP IRRL Balance	*/
+							se013
+						rename=(se004=pre_se004
+							se005=pre_se005
+							se006=pre_se006
+							se007=pre_se007
+							se011=pre_se011
+							se012=pre_se012
+							se013=pre_se013		)	)	
+		loan_transaction	(in=b	keep=	serialno torihiki_bi	) 
+		shinsei.pool&yymm0	(in=c	keep=	serialno	
+							cm006			/*WO Flag @ Cut Off	*/
+							cm007			/*SAS Balance @ Cut Off	*/
+							cm008)			/*IRRL Balance @ Cut Off*/
+	;
+	by	serialno ;
+	if	a ;
+
+	length	book 		$12.
+		irrl_flag	$12. 
+		se004		$10. ;
+
+	/***** Book & IRRL Flag @ Cut Off *****/
+	if	cm007>0 and cm006='0'	then	book='onbook'	;
+	else if	cm007>0 and cm006='1'	then	book='offbook'	;
+	else					book='paidoff'	;
+
+	if	cm008>=0 or cm008 = .	then	irrl_flag= '+'	;
+	else if	cm008< 0		then	irrl_flag= '-'	;
+	else					irrl_flag= 'N'	;
+	
+	/***** Loan in the Month *****/
+	if	b=1			then	loan=1 ;
+	else					loan=0 ;	
+
+	/***** New Volume Flag *****/
+	if	pre_se007=1 or loan=1	then	se007=1 ;
+	else					se007=0 ;
+
+	/***** Bifur Flag *****/
+	if	pre_se006>=1		then	se006=pre_se006 ;
+	else					se006=0 ;
+
+	se002=intnx('day',intnx('month',mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2)),1),-1) ;
+	se008=. ;
+	se011=pre_se011 ;
+	se012=pre_se012 ;
+	se013=pre_se013	;
+
+	/*%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+	/***** GZ Segment Setting ****/
+	/*%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+	%if	&&yymm&i = &yymm1	/* YYMM1 = Closing Month */
+	%then	%do ;
+		if	pre_se004='C' and loan=1 and torihiki_bi <= &closing_dt then 
+			do ;
+				if	irrl_flag= '+' 				then se004='A-1' ;
+				else if irrl_flag='-' and book ='onbook'	then se004='A-2-1' ;
+				else if	irrl_flag='-' and book ne 'onbook'	then se004='A-2-2' ;
+				se005 = &closing_dt;
+			end;
+			else if pre_se004='C' and loan=1 and torihiki_bi > &closing_dt then 
+			do ;
+				se004 = 'R' ;
+				se005 = intnx('day',intnx('month', 
+						mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2)),1),-1);
+			end ;
+			else do;
+				se004 = pre_se004 ;
+				se005 = pre_se005 ;
+			end ;
+	%end ;
+	%else %do ;
+		if	pre_se004='C' and loan=1 then 
+			do ;
+			se004 = 'R' ;
+			se005 = intnx('day',intnx('month', 
+				mdy(%substr(&&yymm&i.,3,2),01,%substr(&&yymm&i.,1,2)),1),-1)	;
+			end ;
+		else 
+			do ;
+			se004 = pre_se004 ;
+			se005 = pre_se005 ;
+		end ;
+	%end ;
+
+	run ;
+
+	/**************************************/
+	/***** Before Bifulcation Trigger *****/
+	%if	&&yymm&i <= &YM1	%then	%do ;
+	data	shinsei.segm&&yymm&i ;
+	set	segm&&yymm&i ;
+	run;					%end ;
+
+	%else 					%do ;
+
+	/***** Bifurcation Flag Setting 
+		New Vol		from 2009-2-1
+		APR Down	from 2009-7-1 
+	*****/
+
+
+	/**************************************/
+	/***** After Bifulcation Trigger ******/				
+	data	trigger&&yymm&i ;
+	set	bifur_trigger&&yymm&i ;
+
+	%if	&&yymm&i <= &YM2			%then	%do ;	/*	New Vol=from 2009-2-1	*/
+	where	tr007=3 ;				%end ;
+
+	%else						%do ;
+	where	tr007 in(3,4) ;				%end ;		/*	APR Down=from 2009-7-1	*/
+	run ;
+
+	proc sort data=trigger&&yymm&i ;
+	by	serialno
+		tr006
+		tr005 ;
+	run ;
+	proc sort data=trigger&&yymm&i nodupkey ;
+	by	serialno ;
+	run ;
+	
+
+
+	data	shinsei.segm&&yymm&i 
+		(keep=	serialno
+			se002
+			se003
+			se004
+			se005
+			se006
+			se007
+			se008
+			se009
+			se010	
+			se011
+			se012
+			se013	) ;
+	format	SERIALNO	9.
+		se002		DATE9.		/* Account Date				*/
+		se003		$10.		/* GZ Segment@Cutoff			*/
+		se004		$10.		/* GZ Segment@MonthEnd 			*/
+		se005		DATE9.		/* GZ Segment Date			*/
+		se006		10.		/* Bifurcation Flag			*/
+		se007		10.		/* New Volume				*/
+		se008		10.		/* Merger & Demerger			*/
+		se009		$1.		/* Product Flag@0712			*/
+		se010		$1.		/* WO Flag @ Cut Off			*/
+		se011		32.		/* Bifurcation Date BOP SAS Balance	*/
+		se012		32.		/* Bifurcation Date BOP IRRL Balance	*/
+		se013		DATE9.		/* Bifurcation Flag Setting Date	*/
+		;
+	merge
+		segm&&yymm&i
+				(in=a	keep=	serialno
+						se002
+						se003
+						se004
+						se005
+						se006
+						se007
+						se008
+						se009
+						se010	
+						se011
+						se012
+						se013			)
+
+		shinsei.irrl&&yymm&j	
+				(in=b	keep=	serialno 
+						ir003
+						ir004
+					rename=(ir003=bop_sas_bal				
+						ir004=bop_irrl_bal)	)
+		trigger&&yymm&i
+				(in=c					) ;
+
+	by	serialno ;
+	
+	if	a ;
+	
+	if	se006>=1		then 	do ;
+		se006=se006 ;
+		se011=se011 ;
+		se012=se012 ;
+		se013=se013 ;			end ;
+
+	else if	bifurcation_flag>=1 and se004 in('B-1' , 'B-2')		then	do ;
+		se006=bifurcation_flag ;
+		se011=bop_sas_bal ;
+		se012=bop_irrl_bal ;
+		se013=tr006 ;			end ;
+
+	else					do ;
+		se006=se006 ;
+		se011=se011 ;
+		se012=se012 ;
+		se013=se013 ;			end ;
+	run ;						
+						%end ;
+
+%end ;	/* %if End */
+
+%end ;	/* loop End */
+
+%mend ;
+%prese ;
+
+
+
+
+/**************************************************************/
+/***************	B-3. Kabarai Cashout	***************/
+/**************************************************************/
+
+
+/* CSV1 = From 2002/11 to 2007/05 	*/
+/* CSV2 = From 2007/06 to 2008/03 	*/
+/* CSV3 = From 2008/04 to 2008/11	*/
+/* CSV4 = From 2008/12 to 2009/06	*/
+/* CSV5 = From 2009/07 to 2009/12	*/
+/* CSV6 = From 2010/01 to 2010/08	*/
+/* CSV7 = From 2010/09 to 2011/05	*/
+/* CSV8 = From 2011/06 to 2012/03       */
+/* CSV9 = From 2012/04 to               */
+
+
+/*** No. of CSV File = X ***/
+
+
+%macro kaba ;
+
+%let d = 9 ;
+%do n = 1 %to &d ;
+options firstobs=2 ;
+
+data p&n ;
+
+	infile "/share/world/master/record/Kabarai_Payout_Details&n..csv" DSD missover ;
+
+	informat	Payout_Acco_Date	YYMMDD10.
+			Payout_Date		YYMMDD10. ;
+	
+	input		Payout_Acco_Date
+			Payout_Date
+			NO
+			Payout_Amount ;
+
+	format		Payout_Acco_Date	YYMMDD10.
+			Payout_Date		YYMMDD10. ;
+run ;
+options firstobs=1 ;
+proc sort data = p&n ;
+by no Payout_Acco_Date Payout_Date ;
+run ;
+%end ;
+
+
+data	payout ;
+set	
+	%do n = 1 %to &d ;
+		p&n
+	%end ;
+	;
+if	No ne . ;
+run ;
+
+
+proc sort data=payout ;
+by no ;
+run ;
+
+proc sort data 	= risklib.convert out = convert ;
+by no ;
+run ;
+
+data	convert ;
+set	convert ;
+where	no > 10100000 ;
+run ;
+
+
+data	kabarai_payout ;
+merge	payout		(in=a							)
+	convert		(in=b	keep = serialno no	rename = (serialno=id) 	) ;
+
+by	no ;
+
+if	a	;
+
+if	b	then	serialno=id ;
+else			serialno=no ;
+drop	id ;
+run ;
+
+proc sort data = kabarai_payout ;
+by serialno Payout_Acco_Date Payout_Date ;
+run ;
+
+/***** in the previous 1month *****/	
+%do i = &e_cut %to &e_cut ;		
+	data	shinsei.kaba&&yymm&i ;
+
+	format	serialno	9.
+		no		9.
+		ka002		DATE9.
+		ka003		32. ;
+
+	merge	kabarai_payout	(in=a	keep = 	serialno
+						no 
+						Payout_Acco_Date
+						Payout_Amount
+					rename=(Payout_Acco_Date=ka002
+						Payout_Amount	=ka003)			)
+		stv_segment	(in=b	keep = 	serialno				) ;
+
+	by	serialno ;
+	if	a and b ;
+
+	if	ka002=intnx('day',intnx('month',mdy(%substr(&&yymm&i..,3,2),01,%substr(&&yymm&i..,1,2)),1),-1) ;
+	run ;
+
+%end ;
+
+
+%mend ;
+%kaba ;
+
+
+/*
+proc freq data=kabarai_payout ;
+tables Payout_Acco_Date ;
+run ;
+*/
+
+
+
+/**************************************************************/
+/***************	B-5. GZ Prorata	***************/
+/**************************************************************/
+
+%macro gzpro1 ;
+
+/***** in the previous 1month *****/	
+%do i = &e_cut %to &e_cut ;
+
+%let j = %eval(&i-1 ) ;
+
+	/***************** Reduction ********************************/
+	data reduction ;
+	set shinsei.tran&&yymm&i 		
+	(rename = (
+	tr004=seq_no
+	tr007=rireki_bunrui
+	tr008=rireki_keizoku
+	tr009=shori_tenban
+	tr010=jitaten_kubun
+	tr011=rireki_shori_kubun
+	tr012=torikesi_kubun
+	tr013=torihiki_kubun
+	tr014=torihiki_kingaku
+	tr015=keiyaku_houhou
+	tr016=b_keiyaku_gaku
+	tr017=b_apr
+	tr018=b_songai_apr
+	tr019=b_shubetu
+	tr020=b_keitai
+	tr021=b_cycle
+	tr022=b_yakujo
+	tr023=b_siharai
+	tr024=b_bonus_1
+	tr025=b_bonus_2
+	tr026=b_bonus_yen
+	tr027=keiyaku_gaku
+	tr028=apr
+	tr029=songai_apr
+	tr030=shubetu
+	tr031=keitai
+	tr032=cycle
+	tr035=bonus_1
+	tr036=bonus_2
+	tr037=bonus_yen
+	tr038=gengaku_gankin
+	tr039=yakujo_husoku
+	tr040=songai_husokku
+	tr042=okure
+	tr043=songai
+	tr044=zan
+	tr045=jikai_bi
+	tr046=current_horyu_kin
+	tr047=gengaku_yakujo
+	tr048=gengaku_songai
+	tr049=gengaku_horyu
+	tr051=gankin
+	tr052=risoku
+	tr053=songai_kin
+	tr054=horyu_kin )) ;
+	where
+		rireki_bunrui = 6 ;		/* Reduction */
+
+	format torihiki_bi yymmdd10.;
+	y = int(tr006 / 10000);
+	m = int((tr006-(y * 10000)) / 100);
+	d = tr006-(y * 10000)-(m * 100);
+	torihiki_bi = mdy(m,d,y);
+	if torikesi_kubun >= 1 then torikesi_kubun = 1;
+	run;
+
+
+	proc sort data = work.reduction ;
+	by
+	SERIALNO
+	ACC_R_NO
+	torihiki_bi
+	rireki_bunrui
+	rireki_keizoku
+	rireki_shori_kubun
+	torihiki_kubun
+	torihiki_kingaku
+	zan
+	gankin
+	risoku
+	songai_kin
+	horyu_kin
+	torikesi_kubun ;
+	run ;
+
+	data work.reduction;
+	set work.reduction;
+	by
+	SERIALNO
+	ACC_R_NO
+	torihiki_bi
+	rireki_bunrui
+	rireki_keizoku
+	rireki_shori_kubun
+	torihiki_kubun
+	torihiki_kingaku
+	zan
+	gankin
+	risoku
+	songai_kin
+	horyu_kin
+	torikesi_kubun;
+	nn + 1;
+	f = first.torikesi_kubun;
+	if first.torikesi_kubun then
+	n = 0;
+	n + 1;
+	run;
+
+	proc sql;
+	create table work.del as
+	select
+		t1.nn
+	from
+		work.reduction t1 inner join work.reduction t2
+	on
+		t1.SERIALNO = t2.SERIALNO       and
+		t1.ACC_R_NO = t2.ACC_R_NO       and
+		t1.torihiki_bi = t2.torihiki_bi and
+		t1.rireki_bunrui = t2.rireki_bunrui     and
+		t1.rireki_keizoku = t2.rireki_keizoku   and
+		t1.rireki_shori_kubun = t2.rireki_shori_kubun   and
+		t1.torihiki_kubun = t2.torihiki_kubun   and
+		t1.torihiki_kingaku = t2.torihiki_kingaku       and
+		t1.zan = t2.zan                 and
+		t1.gankin = t2.gankin           and
+		t1.risoku = t2.risoku           and
+		t1.songai_kin = t2.songai_kin   and
+		t1.horyu_kin = t2.horyu_kin     and
+		(
+			(t1.torikesi_kubun = 0 and t2.torikesi_kubun ne 0) or
+			(t1.torikesi_kubun ne 0 and t2.torikesi_kubun = 0)
+		) and
+		t1.n = t2.n
+	;
+	quit;
+
+	proc sort data = work.reduction; by nn; run ;
+	proc sort data = work.del; by nn; run ;
+
+
+	data work.reduction;
+	merge
+		work.reduction(in = a)
+		work.del(in = b);
+	by nn;
+	if a=1 and b=1 then delete;
+	run;
+
+	data reduction_r ;					
+	set work.reduction ;
+	where
+		gengaku_gankin NE 0 ;
+	if torikesi_kubun = 1	then gengaku_gankin = gengaku_gankin * (-1) ;
+	run ;
+
+	
+	proc sql ;
+	create table re_m as
+	select
+		serialno,
+		sum(gengaku_gankin) as wo_amt
+	from
+		work.reduction_r
+	group by
+		serialno 
+	;
+	quit ;
+	data re ;
+	set	re_m ;
+	if	wo_amt NE 0 ;
+	run ;
+
+
+	%let BL_BKO 		= 1,69		;
+	%let BL_Death 		= 2		;
+	%let BL_CRL 		= 42,75		;
+	%let BL_Lawyer 		= 19,20,79	;
+	%let BL_Judicial 	= 70,74		;
+	%let BL_Mediation 	= 5,41,56	;
+	%let BL_Shiho 		= 55,77 	;
+	%let BL_RP 		= 80,81 	;
+
+	%macro m_bl_chk(in);
+        ary_bl(1) in (&in) 
+		or 
+		ary_bl(2) in (&in) 
+		or 
+		ary_bl(3) in (&in) 
+		or
+        	ary_bl(4) in (&in) 
+		or 
+		ary_bl(5) in (&in)
+	%mend m_bl_chk;
+
+	data work.cust;
+	set
+	shinsei.cust&&yymm&i(keep = serialno c027-c031)	;
+	array ary_bl(*) c027-c031;
+	length type $14 ;
+	if      %m_bl_chk(%bquote(&BL_BKO)	)	then    type = 'BKO'		;
+	else if %m_bl_chk(%bquote(&BL_Death)	)       then    type = 'Death'		;
+	else if %m_bl_chk(%bquote(&BL_CRL))             then    type = 'CRL'		;
+	else if %m_bl_chk(%bquote(&BL_Lawyer))          then    type = 'Lawyer'		;
+	else if %m_bl_chk(%bquote(&BL_Judicial))        then    type = 'Judicial'	;
+	else if %m_bl_chk(%bquote(&BL_Mediation))       then    type = 'Mediation'	;
+	else if %m_bl_chk(%bquote(&BL_Shiho))           then    type = 'S_Shoshi'	;
+	else if %m_bl_chk(%bquote(&BL_RP))              then    type = 'Right_Party'	;
+	else                                                    type = 'Others'		;
+	run ;
+
+	data legal (drop = c027-c031);
+	set cust ;
+	where
+		type in ('CRL','Lawyer','Judicial','Mediation','S_Shoshi','Right_Party');
+	run;
+
+
+	/* REVISED */
+	data	onbook;
+	set	shinsei.pool&yymm0	( keep = serialno cm006 ) ;	/* cm006 = W/O Flag @ Cut Off */	
+	where
+		cm006 = '0' ;
+	run ;
+
+	
+
+	proc sort data = legal ;		by serialno ;	run ;
+	proc sort data = re ;			by serialno ;	run ;
+	proc sort data = onbook(drop = cm006);	by serialno ;	run ;
+
+	
+	/* Legal W/O */
+	data legal_re (keep = serialno wo_amt ) ;				
+	merge re(in=a) legal(in=b) onbook(in=c) ;
+	by serialno ;
+	if a and b and c ;
+	run ;
+
+	
+	/***************** Kabarai Payout ********************************/
+	proc sql ;
+	create table kaba as
+	select
+		serialno,
+		sum(ka003) as ka003 
+	from
+		shinsei.kaba&&yymm&i 
+	group by
+		serialno ;
+	quit ;
+
+
+	data	work.master ;
+	set	shinsei.pool&yymm0 ( keep = serialno) ;
+	run ;
+
+	proc sort data = work.kaba ;	by serialno ;	run ;
+	proc sort data = work.master ;	by serialno ;	run ;
+
+	data work.kabarai ;
+	merge kaba(in=a) master(in=b) ;
+	by serialno ;
+	if a and b ;
+	run ;
+
+	/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+	/****************** Union Reduction and Kabarai **************************/
+	/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+	data serial_a ;
+	set legal_re ( keep = serialno) ;
+	run ;
+
+	data serial_b ;
+	set kabarai ( keep = serialno ) ;
+	run ;
+
+	data serial_ab ;
+	set serial_a serial_b ;
+	run ;
+	proc sort data = serial_ab nodupkey ;	by serialno ;	run ;
+
+	
+	/* Loss Fixed*/
+	data	loss ;								
+	merge 	serial_ab(in=a) 
+		legal_re 
+		kabarai ;
+	by serialno ;
+	if a ;
+	run ;
+
+
+	data	segm_master ;
+	set	shinsei.segm&&yymm&i
+		(keep=serialno se004 se006 se007 se011 se012 ) ;
+
+	if	se006>=1 	then	bifur_flag = 1 ;
+	else				bifur_flag = 0 ;
+
+	run ;
+
+	proc sort data=segm_master ;
+	by serialno ;
+	run ;
+
+	/************************** Merge 1 ***************************************/
+
+	proc sort data = loss ;		by serialno ;	run ;
+	
+
+	data loss ;
+	merge 	loss		(in=a) 
+		segm_master	;
+	
+	by serialno ;
+	if a ;
+	run ;
+
+
+	/****************************************/
+	/* SAS_Balance and IRRL_Balance @Cutoff */
+	data bi_close ;
+	set shinsei.pool&yymm0
+	(keep=	serialno 
+		cm007		/* Balance @ Cutoff	*/ 
+		cm008 		/* IRRL	@ Cutoff	*/
+		cm009		/* Product Flag		*/	) ;
+	run ;
+
+	/********************************************************/
+	/* BOP_SAS Balance and BOP_IRRL_Balance @ Realization	*/
+	data	bi_realize ;
+	set	shinsei.irrl&&yymm&j
+	(keep= 	serialno 
+		ir002		/* Account DT @ Realization	*/ 
+		ir003 		/* Balance @ Realization	*/ 
+		ir004		/* IRRL @ Realization		*/
+	) ;
+	run ;
+
+	/************************** Merge 2 ***************************************/
+	proc sort data = loss ;		by serialno ;	run ;
+	proc sort data = bi_close ;	by serialno ;	run ;
+	proc sort data = bi_realize ;	by serialno ;	run ;
+
+
+	data loss ;
+	merge 	loss(in=a) 
+		bi_close 
+		bi_realize ;
+	by serialno ;
+	if a ;
+	run ;
+
+	/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+	/*************************************************************************/
+	/************************* Prorata by GZ Formula *************************/
+	/*************************************************************************/
+	/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+
+	data	work.pr ;
+	set	loss ;
+	pr002 = intnx ('Month', ir002 , 1 , 'end' ) ;
+	pr003 = se004 ;
+	pr004 = ir003 ;
+	pr005 = wo_amt ;
+	pr006 = ka003 ;
+	pr011 = cm009 ;
+	
+	if se004 in ('W','A-1','R') 							
+		then do ;
+			pr008 = 0 ;							/* GE % 	*/
+			pr010 = 1 ;							/* STV % 	*/
+
+			pr007 = 0 ;							/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003) ;					/* STV yen 	*/
+		end ;
+
+	else if se004 = 'A-2-1'								
+	 	then do ;
+			pr008 = min(1,(cm007-cm008) / ( ir003-ir004 )) ;		/* GE % 	*/	
+			pr010 = 1-pr008 ;						/* STV % 	*/
+			pr007 = int((sum(wo_amt,ka003) * pr008 ) / 1 ) ;		/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003)-pr007;				/* STV yen 	*/
+		end ;
+
+	else if se004 = 'A-2-2' and se007 = 1						
+		then do ;
+			pr008 = abs(cm008) / abs(ir004) ;				/* GE % 	*/
+			pr010 = 1-pr008 ;						/* STV % 	*/
+			pr007 = int(min(sum(0,ka003),sum(0,ka003) * pr008 ) / 1 ) ;	/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003)-pr007 ;				/* STV yen 	*/
+		end ;
+
+	else if se004 = 'A-2-2' and se007 = 0
+		then do ;
+			pr008 = 1 ;							/* GE % 	*/
+			pr010 = 0 ;							/* STV % 	*/
+			pr007 = sum(0,ka003) ;						/* GE yen 	*/		
+			pr009 = sum(wo_amt,ka003)-pr007 ;				/* STV yen 	*/
+		end ;
+
+	else if se004 = 'B-1' and bifur_flag = 0
+		then do ;
+			pr008 = 1 ;							/* GE % 	*/
+			pr010 = 0 ;							/* STV % 	*/
+			pr007 = sum(wo_amt,ka003) ;					/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003)-pr007 ;				/* STV yen 	*/
+		end ;
+
+	else if se004 = 'B-1' and bifur_flag = 1
+		then do;
+			
+			pr008 = ( se011-se012 ) / ( ir003-ir004 ) ;
+			pr010 = 1-pr008 ;
+			pr007 = int(min(sum(wo_amt,ka003),sum(wo_amt,ka003) * pr008 ) / 1 ) ;
+			pr009 = sum(wo_amt,ka003)-pr007 ;
+		end ;
+
+	else if se004 = 'B-2' and bifur_flag = 0
+		then do ;
+			pr008 = 1 ;							/* GE % 	*/
+			pr010 = 0 ;							/* STV % 	*/
+			pr007 = sum(0,ka003) ;						/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003)-pr007 ;				/* STV yen 	*/
+			
+		end ;
+	
+	else if se004 = 'B-2' and bifur_flag = 1
+		then do ;
+			
+			pr008 = ( se011-se012 ) / ( ir003-ir004 ) ;			/* GE % 	*/
+			pr010 =1- pr008 ;						/* STV %	*/
+			pr007 = int(min(sum(0,ka003),sum(0,ka003) * pr008 ) / 1 ) ;	/* GE yen  	*/
+			pr009 = sum(wo_amt,ka003)-pr007 ;				/* STV yen 	*/
+		end ;
+	
+	else if se004 ='C' 
+		then do ;
+			pr008 = 1 ;							/* GE % 	*/
+			pr010 = 0 ;							/* STV % 	*/
+			pr007 = sum(0,ka003);						/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003)-pr007;				/* STV yen 	*/
+		end ;
+	else 	
+		do ; 
+			pr008 = 0 ;							/* GE % 	*/
+			pr010 = 1 ;							/* STV % 	*/
+			pr007 = 0 ;							/* GE yen 	*/
+			pr009 = sum(wo_amt,ka003)-pr007 ;				/* STV yen 	*/
+		end ;
+	run ;
+
+	
+	data	shinsei.pror&&yymm&i ;
+	format	
+	SERIALNO 10.
+	pr002	DATE9.
+	pr003	$10.
+	pr004	32.
+	pr005	32.
+	pr006	32.
+	pr007	10.
+	pr008 	percent10.4
+	pr009	10.
+	pr010 	percent10.4
+	pr011	$1. ;
+	set	pr (keep = serialno pr002-pr011 ) ;
+	run ;
+
+%end ;
+
+%mend ;
+%gzpro1 ;
+
+
+
+/**********************************************************/
+/******************** Loss Rate Replace *******************/
+/**********************************************************/
+%macro gzpro2 ;
+
+%do i = &e_cut %to &e_cut ;
+
+	%let j = %eval(&i-1) ;
+
+	/*---------------- Production---------------- */
+		data 	prev ;
+		set 	
+			%do n = 1 %to &j ;
+			shinsei.pror&&yymm&n ( keep = serialno pr002 pr008 pr010 pr011)
+			%end ;
+			;
+		run ;
+		proc sort data=prev ;
+		by serialno pr002 ;
+		run ;
+		
+		proc sort data = prev(drop=pr002) nodupkey ;
+		by serialno  ;
+		run ;
+
+
+	proc sort data = shinsei.pror&&yymm&i ;
+	by serialno ;	
+	run ;
+
+	data	work.pror&&yymm&i ;
+	merge	shinsei.pror&&yymm&i(in=a) 
+		prev ;
+	by 	serialno ;
+	if	a ;
+	if pr003 in ('A-2-1') 
+		then do ;
+			pr007 = int(pr008 * sum(pr005,pr006) / 1 ) ;
+			pr009 = sum(pr005,pr006)-pr007 ;
+		end ;
+	if pr003 in ('B-1')
+		then do ;
+			pr007 = int(min(sum(pr005,pr006),pr008 * sum(pr005,pr006)) / 1 ) ;
+			pr009 = sum(pr005,pr006)-pr007 ;
+		end ;
+	if pr003 in ('A-2-2','B-2','C')
+		then do ;
+			pr007 = int(min(sum(0,pr006),pr008 * sum(0,pr006)) / 1 ) ;
+			pr009 = sum(pr005,pr006)-pr007 ;
+		end ;
+	run ;
+
+	data	shinsei.pror&&yymm&i ;
+	format 	SERIALNO 10. 
+		pr002 DATE9. 
+		pr003 $10. 
+		pr004 32. 
+		pr005 32. 
+		pr006 32. 
+		pr007 10.
+		pr008 percent10.4 
+		pr009 10. 
+		pr010 percent10.4 		
+		pr011 $1.;
+	set	work.pror&&yymm&i ;
+	run ;
+	
+%end ;
+
+%mend ;
+%gzpro2 ;
+
+
+
+
+
+
+
+
+/*********************************************************************************************************/
+/* ******************* 0 Division Process ************** */
+/*********************************************************************************************************/
+/*** Check code devided Zero or Missing ***/
+
+%macro zero ;
+
+%do i = &e_cut %to &e_cut ;
+%let j = %eval(&i - 1) ;
+
+data input ;
+	set shinsei.pror&&yymm&i ( keep = serialno pr002 ) ;
+run ;
+
+/* sas balance and irrl balance @BOP */
+data irrl ;
+	set shinsei.irrl&&yymm&j (keep = serialno ir003 ir004 ) ;
+run ;
+
+/* sas balance and irrl balance @cutoff */
+data cutoff ;
+	set shinsei.pool0808 ( keep = serialno cm007 cm008 ) ;
+run ;
+
+/* sas balance and irrl balance @Bifurcation */
+data bifur ;
+	set shinsei.segm&&yymm&i ( keep = serialno se004 se006 se007 se011 se012 ) ;
+				/* 004 = segment 006 = bifur   007 = newvolum   011 = sas  012 = irrl */
+	if se006 >= 1 then bifur_flag = 1 ;
+	else bifur_flag = 0 ;
+run ;
+
+/* merge */
+proc sort data = input ;	by serialno ;	run ;
+proc sort data = cutoff ;	by serialno ;	run ;
+proc sort data = bifur ;	by serialno ;	run ;
+proc sort data = irrl ;		by serialno ;	run ;
+
+data check1 ;
+	merge input(in=a) cutoff bifur irrl ;
+	by serialno ;
+	if a ;
+run ;
+
+data check&&yymm&i ;
+	set check1 ;
+	alarm = 0 ;
+
+	/* Denominator EQ zero or Missing */
+	if se004 in ('W','A-1','R') 									then alarm = 0 ;
+	else if se004 = 'A-2-1'	and ((ir003 - ir004) = 0 or (ir003 - ir004) = . )			then alarm = 1 ;
+	else if se004 = 'A-2-2' and se007 = 1 and ( abs(ir004) = 0 or abs(ir004) = . )			then alarm = 1 ;
+	else if se004 = 'A-2-2' and se007 = 0 								then alarm = 0 ;
+	else if se004 = 'B-1' and bifur_flag = 0							then alarm = 0 ;
+	else if se004 = 'B-1' and bifur_flag = 1 and ((ir003 - ir004 ) = 0 or (ir003 - ir004 ) = . )	then alarm = 1 ;
+	else if se004 = 'B-2' and bifur_flag = 0							then alarm = 0 ;
+	else if se004 = 'B-2' and bifur_flag = 1 and ((ir003 - ir004 ) = 0 or (ir003 - ir004 ) = . )	then alarm = 1 ;
+	else if se004 ='C' 										then alarm = 0 ;
+
+
+run ;
+
+/* output alarmed */
+data alarm&&yymm&i ;
+	set check&&yymm&i ;
+	where
+		alarm > 0 ;
+run ;
+
+%end ;
+%mend ;
+
+%zero ;
+
+/***** 
+Alarm of pror0809 = 0
+Alarm of pror0810 = 0
+Alarm of pror0811 = 0
+Alarm of pror0812 = 0
+Alarm of pror0901 = 0
+Alarm of pror0902 = 0
+Alarm of pror0903 = 0
+Alarm of pror0904 = 0
+Alarm of pror0905 = 0
+Alarm of pror0906 = 0
+Alarm of pror0907 = 0
+Alarm of pror0908 = 1	
+Alarm of pror0909 = 1	
+Alarm of pror0910 = 0	
+Alarm of pror0911 = 0
+Alarm of pror0912 = 1
+Alarm of pror1001 = 0
+Alarm of pror1002 = 2
+Alarm of pror1003 = 0
+Alarm of pror1004 = 1
+Alarm of pror1005 = 0
+Alarm of pror1006 = 2
+Alarm of pror1007 = 0
+*****/
+
+
+/*
+proc export data = alarm1006
+file="/home/risk-saiken/mkawanis/alarm1006.csv" replace ;
+run ;
+*/
+
+
+
+
+
+
+/*****************************************************************************/
+/*****************************************************************************/
+/***** label ****************************************************************/
+/*****************************************************************************/
+/*****************************************************************************/
+
+%let	poollib = shinsei ;
+
+%macro label ;
+
+%do i = &e_cut %to &e_cut ;
+
+
+/*** 2.Previous Segment ***/
+proc datasets lib = &poollib nolist ;
+modify segm&&yymm&i ;
+	label
+		SERIALNO=	'会員一連番号'
+		se002	=	'会計日付'
+		se003	=	'GZ Segment@Cutoff'
+		se004	=	'GZ Segment@MonthEnd'
+		se005	=	'GZ Segment設定日'
+		se006	=	'Bifurcationフラグ'
+		se007	=	'NewVolumeフラグ'
+		se008	=	'Mergerフラグ'
+		se009	=	'商品分類'
+		se010	=	'Ｗ／Ｏフラグ@Cutoff'
+		se011	=	'BOP SAS Balance @ Bifurcation'
+		se012	=	'BOP IRRL Balance @ Bifurcation'
+		se013	=	'Bifurcation Date'
+		;
+run ;
+
+
+/*** 3.Transaction ***/
+proc datasets lib = &poollib nolist ;
+modify tran&&yymm&i ;
+	label
+		SERIALNO='会員一連番号'
+		acc_r_no='口座枝番'
+		tr003='処理年月日'
+		tr004='連番'
+		tr005='処理時間'
+		tr006='取引年月日'
+		tr007='履歴分類'
+		tr008='履歴継続番号'
+		tr009='処理店番'
+		tr010='自他店区分'
+		tr011='履歴処理区分'
+		tr012='取消区分'
+		tr013='取引区分'
+		tr014='取引金額'
+		tr015='契約変更方法区分'
+		tr016='変更前包括契約額'
+		tr017='変更前約定利率'
+		tr018='変更前損害金利率'
+		tr019='変更前支払種別'
+		tr020='変更前支払形態'
+		tr021='変更前支払サイクル'
+		tr022='変更前約定日'
+		tr023='変更前支払金額'
+		tr024='変更前ボーナス支払月1'
+		tr025='変更前ボーナス支払月2'
+		tr026='変更前ボーナス金額'
+		tr027='包括契約額'
+		tr028='約定利率'
+		tr029='損害金利率'
+		tr030='支払種別'
+		tr031='支払形態'
+		tr032='支払サイクル'
+		tr033='約定日'
+		tr034='支払金額'
+		tr035='ボーナス支払月1'
+		tr036='ボーナス支払月2'
+		tr037='ボーナス金額'
+		tr038='減額元金'
+		tr039='約定不足金'
+		tr040='損害不足金'
+		tr041='経過日数'
+		tr042='遅れ日数'
+		tr043='損害日数'
+		tr044='実行残'
+		tr045='次回支払年月日'
+		tr046='保留金'
+		tr047='減額約定利息'
+		tr048='減額損害金'
+		tr049='減額保留金'
+		tr050='証書リボル区分'
+		tr051='受取元金'
+		tr052='受取約定利息'
+		tr053='受取損害金'
+		tr054='受取保留金'
+		;
+run ;
+
+
+
+/*** 5.Kabarai Cashout ***/
+proc datasets lib = &poollib nolist ;
+modify kaba&&yymm&i ;
+	label
+		SERIALNO=	'会員一連番号'
+		no	=	'会員番号'
+		ka002	=	'過払い返還年月'
+		ka003	=	'過払い金額'
+		;
+run ;
+
+
+
+/*** Prorata ***/
+proc datasets lib = &poollib nolist ;
+modify pror&&yymm&i ;
+	label
+		SERIALNO=	'会員一連番号'	
+		pr002	=	'会計日付'
+		pr003	=	'GZ Segment'
+		pr004	=	'実行残'
+		pr005	=	'減額元金'
+		pr006	=	'Payout金額'
+		pr007	=	'GE 負担額'
+		pr008	=	'GE 負担率'
+		pr009	=	'STV 負担額'
+		pr010	=	'STV 負担率'
+		pr011	=	'商品分類'
+		;
+run ;
+
+
+/*** 4.CUST ***/
+proc datasets lib = &poollib nolist ;
+modify cust&&yymm&i ;
+	label
+		
+SERIALNO='会員一連番号'
+C002='店番'
+C003='会計日付'
+C027='ブルー要因区分1'
+C028='ブルー要因区分2'
+C029='ブルー要因区分3'
+C030='ブルー要因区分4'
+C031='ブルー要因区分5'
+C032='和解客区分'
+C039='顧客与信枠5'
+C042='当初貸付年月日'
+C047='実行残高'
+C136='与信設定年月日5'
+C143='完済年月日'
+C144='完了年月日'
+C145='貸倒れ年月日'
+C198='Ｗ／Ｏフラグ'
+;
+run ;
+
+
+
+/*** 6.IRRL Balance ***/
+proc datasets lib = &poollib nolist ;
+modify irrl&&yymm&i ;
+	label
+		SERIALNO=	'会員一連番号'
+		ir002	=	'会計日付'
+		ir003	=	'実行残'
+		ir004	=	'利息制限法残高'
+		;
+run ;
+
+
+%end ;
+
+%mend ;
+%label ;
+
+/****************************/
+/***** Label Update End *****/
+/****************************/
+
+
+
+
+/**************************************/
+/********** GZ Summary Report *********/
+%macro gzsum ;
+%do i = &e_cut %to &e_cut ;
+
+	/********** Payment Record form Transaction ***********/
+	data pay ;
+	set	shinsei.tran&&yymm&i
+	(rename = (
+		tr004=seq_no
+		tr007=rireki_bunrui
+		tr008=rireki_keizoku
+		tr009=shori_tenban
+		tr010=jitaten_kubun
+		tr011=rireki_shori_kubun
+		tr012=torikesi_kubun
+		tr013=torihiki_kubun
+		tr014=torihiki_kingaku
+		tr015=keiyaku_houhou
+		tr016=b_keiyaku_gaku
+		tr017=b_apr
+		tr018=b_songai_apr
+		tr019=b_shubetu
+		tr020=b_keitai
+		tr021=b_cycle
+		tr022=b_yakujo
+		tr023=b_siharai
+		tr024=b_bonus_1
+		tr025=b_bonus_2
+		tr026=b_bonus_yen
+		tr027=keiyaku_gaku
+		tr028=apr
+		tr029=songai_apr
+		tr030=shubetu
+		tr031=keitai
+		tr032=cycle
+		tr035=bonus_1
+		tr036=bonus_2
+		tr037=bonus_yen
+		tr038=gengaku_gankin
+		tr039=yakujo_husoku
+		tr040=songai_husokku
+		tr042=okure
+		tr043=songai
+		tr044=zan
+		tr045=jikai_bi
+		tr046=current_horyu_kin
+		tr047=gengaku_yakujo
+		tr048=gengaku_songai
+		tr049=gengaku_horyu
+		tr051=gankin
+		tr052=risoku
+		tr053=songai_kin
+		tr054=horyu_kin )) 
+		;
+	where rireki_bunrui = 4 ;	/* Payment */
+
+	/* Num -> SAS Date (torihiki_bi)*/
+	format torihiki_bi yymmdd10.;
+	y = int(tr006 / 10000);
+	m = int((tr006-(y * 10000)) / 100);
+	d = tr006-(y * 10000)-(m * 100);
+	torihiki_bi = mdy(m,d,y);
+	/* Num -> SAS Date (shori_bi)*/
+	format shori_bi yymmdd10.;
+	y = int(tr003 / 10000);
+	m = int((tr003-(y * 10000)) / 100);
+	d = tr003-(y * 10000)-(m * 100);
+	shori_bi = mdy(m,d,y);
+
+	if torikesi_kubun >= 1 then torikesi_kubun = 1;
+
+	format shori_jikan time.;
+
+	if length(compress(put(tr005,10.))) >=7 then do;
+		w_shori_jikan = int(tr005 / 100);
+		h = int(w_shori_jikan / 10000);
+		m = int((w_shori_jikan-(h * 10000)) / 100);
+		s = mod(w_shori_jikan,100);
+		shori_jikan = hms(h,m,s);
+	end;
+	else do;
+		w_shori_jikan = int(tr005 / 100);
+		h = int(w_shori_jikan / 10000);
+		m = int((w_shori_jikan-(h * 10000)) / 100);
+		s = mod(w_shori_jikan,100);
+		shori_jikan = hms(h,m,s);
+		if not(h <= 23 and m <= 59 and s <= 59) then do;
+			w_shori_jikan = int(tr005 / 100);
+			h = int(w_shori_jikan / 10000);
+			m = int((w_shori_jikan-(h * 10000)) / 100);
+			s = mod(w_shori_jikan,100);
+			shori_jikan = hms(h,m,s);
+		end;
+	end;
+
+	/* Cancel Off-set Shori-Jikan */
+	off_set_shori_jikan = int(tr005 / 1000000);
+	run ;
+
+	/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+	/* *** SET OFF *** */
+	/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+	proc sort data = work.pay ;
+	by
+		SERIALNO
+		ACC_R_NO
+		torihiki_bi
+		rireki_bunrui
+		rireki_keizoku
+		rireki_shori_kubun
+		torihiki_kubun
+		torihiki_kingaku
+		zan
+		gankin
+		risoku
+		songai_kin
+		horyu_kin
+		torikesi_kubun ;
+	run ;
+
+	data work.pay;
+	set work.pay;
+	by
+		SERIALNO
+		ACC_R_NO
+		torihiki_bi
+		rireki_bunrui
+		rireki_keizoku
+		rireki_shori_kubun
+		torihiki_kubun
+		torihiki_kingaku
+		zan
+		gankin
+		risoku
+		songai_kin
+		horyu_kin
+		torikesi_kubun;
+		nn + 1;
+		f = first.torikesi_kubun;
+		if first.torikesi_kubun then n = 0;
+        n + 1;
+	run;
+
+	proc sql;
+		create table work.del as
+		select
+			t1.nn
+		from
+			work.pay t1 inner join work.pay t2
+		on
+			t1.SERIALNO = t2.SERIALNO       and
+			t1.ACC_R_NO = t2.ACC_R_NO       and
+			t1.torihiki_bi = t2.torihiki_bi and
+			t1.rireki_bunrui = t2.rireki_bunrui     and
+			t1.rireki_keizoku = t2.rireki_keizoku   and
+			t1.rireki_shori_kubun = t2.rireki_shori_kubun   and
+			t1.torihiki_kubun = t2.torihiki_kubun   and
+			t1.torihiki_kingaku = t2.torihiki_kingaku       and
+			t1.zan = t2.zan                 and
+			t1.gankin = t2.gankin           and
+			t1.risoku = t2.risoku           and
+			t1.songai_kin = t2.songai_kin   and
+			t1.horyu_kin = t2.horyu_kin     and
+			(
+				(t1.torikesi_kubun = 0 and t2.torikesi_kubun ne 0) or
+				(t1.torikesi_kubun ne 0 and t2.torikesi_kubun = 0)
+			)                               and
+			t1.n = t2.n
+		;
+	quit;
+
+	proc sort data = work.pay; by nn; run;
+	proc sort data = work.del; by nn; run;
+
+	data pay&&yymm&i  ;
+	merge
+		work.pay(in = a)
+		work.del(in = b);
+	by nn;
+	if a=1 and b=1 then delete;
+	run;
+
+	proc sql ;
+		create table payment&&yymm&i as
+		select
+			serialno,
+			sum(gankin+risoku+songai_kin+horyu_kin) as payment
+		from
+			pay&&yymm&i
+		where	
+			rireki_bunrui=4
+			and
+			torihiki_kubun not in(21,31)
+		group by
+			serialno ;
+	quit ;
+
+	/********** GZ Monthley Report Master **********/
+	proc sql ;
+	create table pror&&yymm&i as
+	select
+		serialno,
+		sum(pr005) as pr005,
+		sum(pr006) as pr006,
+		sum(pr007) as pr007,
+		sum(pr009) as pr009	
+	from	
+		shinsei.pror&&yymm&i
+	group by
+		serialno ;
+	quit ;
+
+	data shinsei.GZ_Master&&yymm&i ;
+	merge
+		shinsei.segm&&yymm&i
+		(in=a 	keep=
+			serialno
+			se004			/*	GZ Segment		*/
+			se006			/*	Bifurcation Flag	*/
+			se007	)		/*	New_Lending		*/
+		
+		shinsei.cust&&yymm&i	
+		(in=b 	keep= 
+			serialno
+			c003			/*	Account_Date		*/
+			c047			/*	SAS Balance @EOP	*/
+			c198	)		/*	WO Flag	@ EOP		*/
+	
+		shinsei.pool&yymm0
+		(in=c	keep=
+			serialno
+			cm006			/*	WO Flag @ Cutoff	*/
+			cm007			/*	SAS Balance @ Cutoff	*/
+			cm009	)		/*	Product Flag @ Original	*/
+			
+		pror&&yymm&i
+		(in=d 	keep=	
+			serialno 
+			pr005			/*	Redu			*/
+			pr006			/*	Cashout			*/
+			pr007			/*	GE_Loss			*/
+			pr009	)		/*	STV_Loss		*/
+
+		payment&&yymm&i
+		(in=f 	keep=
+			serialno 
+			payment	)		/*	Payment			*/
+		;
+	by	serialno ;
+	if	a ;
+
+	if	f	then	pay_flag=1 ;
+	else			pay_flag=0 ;
+
+	length	eom_status 	$20. 
+		Biz		$8.
+	;
+
+	/***** GZ Status Adj *****/
+	if	se004='A-2-2' and se007 = 1			then	eom_status='A-2-2-NL';
+	else if	se004='A-2-2' and se007 = 0			then	eom_status='A-2-2-NO';
+	else if	se004='B-1' and se006=1				then	eom_status='B-1-NV';
+	else if	se004='B-1' and se006=2				then	eom_status='B-1-AP';
+	else if se004='B-2' and se006=1				then	eom_status='B-2-NV';
+	else if	se004='B-2' and se006=2				then	eom_status='B-2-AP';
+	else								eom_status=se004;	
+
+	/***** Product Flag *****/
+	if	cm009	in('H' , 'I' , 'J' , 'K' , 'L' , 'M' , 'N' , 'P' , 'Q' , 'T' , 'U' , 'V' ) 
+								then 	Biz='PL';
+	else if cm009	in('F' , 'G' , 'O')			then	Biz='XS' ;
+	else								Biz='-' ;
+	
+	/***** Balance *****/
+	sas_balance=c047 ;
+	if	c198='0'		then		book_balance=c047	;
+	else						book_balance=0		;
+
+	/***** SAS Balance *****/
+	sas_balance=c047 ;
+
+	/***** Recovery *****/
+	if	eom_status='A-2-2-NO' 
+		and
+		cm006='1'		/* WO Flag @ Cutoff 	*/
+		and
+		cm007>0			/* SAS Balance @ Cutoff	*/
+		and
+		pay_flag=1							then	recovery_amount=payment ;
+	else										recovery_amount=0	;
+	/***** GZ Reduction *****/
+	if	pr005 not in(0 , . )	then 
+	do ;
+		legal_redu_cnt=1		;
+		legal_redu_amo=pr005		;
+	end ;	
+	else	do ;	
+		legal_redu_cnt=0		;
+		legal_redu_amo=0		;
+	end ;
+
+	/***** GZ Cashout *****/
+	if	pr006 not in(0 , . )	then
+	do ;
+		kabarai_cnt=1			;
+		kabarai_amo=pr006		;
+	end ;
+	else	do ;
+		kabarai_cnt=0			;
+		kabarai_amo=0			;
+	end ;
+	run ;
+
+%end ;
+
+%mend ;
+%gzsum ;
+
+
+
+/**********************************/
+/***** GZ Summary Data Export *****/
+/**********************************/
+%macro expo ;
+%do i = &e_cut %to &e_cut ;
+
+	proc sql ;
+	create table shinsei.Freq_GZ_Master&&yymm&i as
+	select	
+		c003 				as month format=YYMMDD10.,
+		eom_status,
+		Biz,
+		count(*)			as	no_of_cust,
+		sum(legal_redu_cnt)		as	redu_cnt,
+		sum(legal_redu_amo/1000000)	as	redu_amo_MM,
+		sum(kabarai_cnt)		as	kaba_cnt,
+		sum(kabarai_amo/1000000)	as	kaba_amo_MM,
+		sum(book_balance/1000000)	as	book_bal_MM,
+		sum(sas_balance /1000000)	as	sas_bal_MM,
+		sum(recovery_amount/1000000)	as	recovery_MM,
+		sum(pr007/1000000)		as	GE_Loss_MM,
+		sum(pr009/1000000)		as	STV_Loss_MM
+	from
+		shinsei.GZ_Master&&yymm&i
+	group by
+		month,
+		eom_status,
+		Biz ;
+	quit ;
+
+%end ;
+
+
+data Freq_GZ_Master ;
+set	
+	%do i = &e_cut %to &e_cut ;
+		shinsei.Freq_GZ_Master&&yymm&i
+	%end ;
+;
+run;
+
+proc export data = Freq_GZ_Master
+file="/share/gray/Freq_GZ_Master_&&yymm&e_cut...csv" replace;
+run ;
+
+
+%mend ;
+%expo ;
+
