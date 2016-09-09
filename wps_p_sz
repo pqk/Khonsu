@@ -1,0 +1,201 @@
+ods noproctitle;
+/*PORTFOLIO*/
+%let date=1312;
+data SZ_PORT;
+set PINE_SZ.port;
+_DATE=put(AS_OF_DATE,yymmn5.);
+Length DPD $8 DPD_Type $15;
+if delinquency=0 then do; DPD='0'; DPD_Type='Normal';end;
+else if 30>=delinquency 	 and delinquency>0   then do; DPD='1-30';    DPD_Type='Normal';end;
+else if 60>=delinquency 	 and delinquency>=31  then do; DPD='31-60';   DPD_Type='Normal';end;
+else if 90>=delinquency 	 and delinquency>=61  then do; DPD='61-90';   DPD_Type='Special Mention';end;
+else if 120>=delinquency     and delinquency>=91  then do; DPD='91-120';  DPD_Type='SubStandard';end;
+else if 150>=delinquency     and delinquency>=121 then do; DPD='121-150'; DPD_Type='SubStandard';end;
+else if 180>=delinquency     and delinquency>=151 then do; DPD='151-180'; DPD_Type='SubStandard';end;
+else if 360>=delinquency     and delinquency>=181 then do; DPD='181-360'; DPD_Type='Doubtful';end;
+else if 360>delinquency                          then do; DPD='360+';    DPD_Type='ChargeOff';end;
+Orig_Date=intnx('month',AS_OF_DATE,-time_on_book,'E');
+Orig_Date_M=put(Orig_Date,yymmn5.);
+Tenor=intck('month',Orig_Date,date_account_closed);
+format Orig_Date yymmdd10.;
+run;
+
+data port&date;
+set WORK.SZ_PORT;
+where _Date=put(&date,5.)/*and year(date_account_closed)^=2013 and write_off_date=.*/;run;
+
+data WORK.SZ_ORIG;set PINE_SZ.orig;run;
+data port&date;
+merge port&date(in=p) WORK.SZ_ORIG(keep=account_number original_advance_amount TOTAL_INCOME DEBT_INCOME_RATIO_AFTER EARLY_TERMINATION);
+if p;
+if EARLY_TERMINATION='EARLY' then Loan_Status='EPO';
+else if EARLY_TERMINATION='CHRGO' then Loan_Status='WO';
+else Loan_Status='NA';
+run;
+/*********/
+
+proc means data=port&date n sum maxdec=2;
+var remaining_capital_balance remaining_gross_receivable;
+class DPD_Type;
+run;
+
+
+data port1212;
+set WORK.SZ_PORT;
+where AS_OF_DATE='31dec2012'd and year(date_account_closed)^=2012 and write_off_date=.;run;
+
+
+
+/*stat1*/
+proc means data=WORK.PORT1312 n nmiss sum mean std min p1 p5 p10 p25 median p75 p90 p95 p99 max t probt range maxdec=2;
+var Tenor time_on_book ORIGINAL_ADVANCE_AMOUNT remaining_gross_receivable interest_rate TOTAL_INCOME DEBT_INCOME_RATIO_AFTER;
+*class DPD;
+title;
+run;
+/****/
+
+
+
+proc sql;
+create table test as
+select ACCOUNT_NUMBER,count(ACCOUNT_NUMBER) as Count
+from WORK.PORT1312
+group by ACCOUNT_NUMBER
+order by count,ACCOUNT_NUMBER;quit;
+
+
+proc freq data=PINE_SZ.orig;
+tables EARLY_TERMINATION /norow nocol nocum nopercent;
+run;
+
+
+
+
+proc freq data=WORK.SZ_ORIG;
+tables EARLY_TERMINATION / nocol norow nopercent nocum;
+run;
+
+proc sort data=sz_port out=test;by account_number;run;
+
+data test;
+set test;
+by account_number;
+if last.account_number and remaining_capital_balance=0 and remaining_gross_receivable=0 and 
+write_off_date=. and put(date_account_closed,yymmn5.)=_DATE then Loan_Status='NPO';
+if write_off_date>0 then  Loan_Status='WO';
+run;
+
+
+
+
+then test=1;
+else test=0;
+run;
+
+
+proc freq data=sz_port;
+tables payment_type / norow nocol nocum nopercent;
+run;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+proc means data=WORK.PORT1312 n nmiss sum;
+var remaining_gross_receivable;
+class DPD;
+title;
+run;
+
+
+
+
+proc freq data=WORK.PORT1312;
+tables DPD /norow nocum nocol nopercent;run;
+
+
+proc freq data=SZ_PORT;
+tables _DATE /norow nocum nocol nopercent;
+
+proc sort data=SZ_PORT;by account_number AS_OF_DATE;run;
+
+
+proc sql;
+create table testo as
+select ACCOUNT_NUMBER,count(ACCOUNT_NUMBER) as Count
+from PINE_SZ.port
+group by ACCOUNT_NUMBER
+order by count,ACCOUNT_NUMBER;quit;
+
+proc sql;
+create table sum1212 as
+select sum(remaining_capital_balance) as CapSum format comma14.,sum(remaining_gross_receivable) as RecSum format comma15.,
+sum(remaining_capital_balance+remaining_gross_receivable) as Out_Bal format comma15.
+from WORK.PORT1212;
+quit;
+
+
+proc freq data=PINE_SZ.port;
+tables time_on_book /norow nocum nocol nopercent;
+where AS_OF_DATE='31dec2013'd and date_account_closed>'31dec2012'd and write_off_date=.;
+
+
+/*ORIGINATION*/
+data SZ_ORIG;
+set PINE_SZ.orig;
+ORIG_DATE=put(ORIGINATION_DATE,yymmn5.);
+run;
+
+proc freq data=SZ_ORIG;
+tables ORIG_DATE /norow nocum nocol nopercent;
+where product='PLOAN';
+run;
+
+proc sql;
+create table testo as
+select ACCOUNT_NUMBER,count(ACCOUNT_NUMBER) as Count
+from SZ_ORIG 
+group by ACCOUNT_NUMBER
+order by count,ACCOUNT_NUMBER;quit;
+
+
+data ACT_SZ;
+set PINE_SZ.port;
+where AS_OF_DATE='31dec2013'd and date_account_closed>'31dec2012'd and write_off_date=.;
+run;
+
+
+proc sort data=WORK.PORT1312;by account_number;run;
+
+
+
+
+proc sql;
+create table port1 as
+select account_number,AS_OF_DATE,count(account_number) as Count
+from WORK.PORT
+group by account_number
+order by account_number;
+quit;
+
+
+proc datasets lib=PINE_SZ;
+contents data=orig;
+quit;
+
+proc export data=PINE_MG.repossessed_data
+outfile="C:\Documents and Settings\225273\My Documents\Pine\Tape_Data\repo.csv"
+dbms=csv replace;run;
