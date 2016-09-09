@@ -1,0 +1,122 @@
+libname marcov '/share/gray/marcov';
+
+%let I=180;
+%put &&yymm&i;
+
+%let s_cut =175;
+%let e_cut =180;
+
+%macro claim;
+
+%do i = &s_cut %to &e_cut ;
+
+data claim&&yymm&i;
+set marcov.claim;
+LI_YM=LI_YM-200000;
+if LI_YM=&&yymm&i then output;
+run;
+
+proc sort data=claim&&yymm&i presorted;by serialno;run;
+proc sort data=l1.cust&&yymm&i presorted out=cust&&yymm&i;by serialno;run;
+
+data claim&&yymm&i;
+merge claim&&yymm&i(in=t1) cust&&yymm&i(in=t2 keep=serialno 
+										c027 c028 c029 c030 c031
+										c188 c189 c190 c191 c192
+										rename=(c188=M2_1 c189=M2_2 c190=M2_3 c191=M2_4 c192=M2_5));
+by serialno;
+if t1;
+
+/***** Legal Type *****/
+	array bl(*) c027 - c031;
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type1=1 ; /*BKO*/
+
+	%if	&&yymm&i>=0809	%then %do;
+	else if	M2_1=238 
+	or	M2_2=238 
+	or	M2_3=238 
+	or	M2_4=238 
+	or	M2_5=238			then	legal_type1=1.5 ; /*Pre BKO*/
+		%end;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type1=2 ; /*Death*/
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type1=3 ;/*CRL*/
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type1=4 ;/*弁護士*/
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type1=5 ;/*司法書士*/
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type1=6 ;/*調停 Mediation*/
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type1=7 ;/*一般司法書士*/
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type1=8 ;/*本人Claim--RP*/
+
+	else						legal_type1=0;
+	run;
+
+%end;
+
+data	Claim;
+set
+	%do i = &s_cut %to &e_cut ;
+	claim&&yymm&i
+	%end ;
+	;
+run ;
+
+%mend Claim;
+
+%claim
+
+
+proc export data = claim
+OUTFILE= "~/claim.csv"  /*CHANGE*/
+dbms = csv replace;
+run;
+
+
+
+
+
+data aa(keep=serialno 	c027 c028 c029 c030 c031 M2_1 M2_2 M2_3 M2_4 M2_5 legal_type);
+set claim1412;
+run;
+
+
+proc freq data=claim1407;
+tables legal_type1 /norow nocol nopercent nocum;
+run;
