@@ -1,0 +1,780 @@
+/*pl_data*/
+/*Add new variables, merge w/ origination data, reorganize variables and sort*/
+%macro PL;
+%let start=11;
+%let fin=13;
+%do yr=&start %to &fin;
+	%do mo=1 %to 12;
+		%if &mo<10 %then %do;
+proc sql;
+create table PINE_PL.PL_&yr.0&mo as
+select AS_OF_DATE,CUSTOMER_NUMBER,input(substr(ACCOUNT_NUMBER,5),10.) as ACCT,
+	case
+	when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL'
+	when substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then 'PL' end as Product,
+	case
+	when substr(SUBPRODUCT_GP,1,3)='Her' then 'HER'
+	when substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+	when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Prod_Grp,
+	LOAN_STATUS,SUBPRODUCT_GP,substr(ACCOUNT_NUMBER,1,3) as Prod_Type,ACCOUNT_NUMBER,PRODUCT_GP,ACCOUNT_OPEN_DATE,TENOR,TIME_ON_BOOK,
+	OUTSTANDING_BALANCE,DATE_CLOSE,PLANNED_END_DATE,
+	case
+	when EARLY_TERMINATION='REFINANCING SETTLEMENT' then 'RPO'
+	when EARLY_TERMINATION='EARLY SETTLEMENT' then 'EPO'
+	when EARLY_TERMINATION='DRP SETTLEMENT' then 'DPO'
+	when EARLY_TERMINATION='NORMAL SETTLEMENT' then 'NPO'
+	when EARLY_TERMINATION='WRITE-OFF' then 'WO' 
+	else 'NA' end as EARLY_TERMINATION,*
+from PINE_PL.ploan_&yr.0&mo
+order by CUSTOMER_NUMBER,ACCT,LOAN_STATUS;quit;	
+
+data PINE_PL.PL_&yr.0&mo(drop=business_mode);
+merge 	PINE_PL.PL_&yr.0&mo(in=t) 
+	PINE_PL.origination(keep=customer_number ACCT act_date business_mode Bus_Mode P_AMT Gross_AMT where=(ACT_Date="&yr.0&mo" and business_mode^='Revolving Review'));
+by customer_number acct;
+if t;run;
+
+proc sql;
+create table PINE_PL.PL_&yr.0&mo as
+select AS_OF_DATE,CUSTOMER_NUMBER,ACCT,Product,Prod_Grp,LOAN_STATUS,SUBPRODUCT_GP,Bus_Mode,Prod_Type,ACCOUNT_NUMBER,PRODUCT_GP,ACCOUNT_OPEN_DATE,
+ACT_Date,TENOR,TIME_ON_BOOK,P_AMT,Gross_AMT,OUTSTANDING_BALANCE,DATE_CLOSE,PLANNED_END_DATE,EARLY_TERMINATION,RATE_FLAG,SECURE_FLAG,TERM_FLAG,
+PURPOSE_OF_ADVANCE,INTEREST_RATE,BEHAVIOURAL_SCORE,PAYMENT_FREQ,CURRENT_PAY_MTD,CONTRACTUAL_PAYMENT,MIN_PAY_RATIO,TOTAL_PAYMENT_AMOUNT,
+LAST_PAID_DATE,NEXT_DUE_DATE,DELINQUENCY_BUCKET,WRITEOFF_DATE,WRITEOFF_AMT,FRAUD
+from PINE_PL.PL_&yr.0&mo;quit;
+
+proc sort data=PINE_PL.PL_&yr.0&mo; by customer_number acct;run;
+		%end;
+		%else %if &mo>=10 %then %do;
+		proc sql;
+create table PINE_PL.PL_&yr&mo as
+select AS_OF_DATE,CUSTOMER_NUMBER,input(substr(ACCOUNT_NUMBER,5),10.) as ACCT,
+	case
+	when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL'
+	when substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then 'PL' end as Product,
+	case
+	when substr(SUBPRODUCT_GP,1,3)='Her' then 'HER'
+	when substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+	when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Prod_Grp,
+	LOAN_STATUS,SUBPRODUCT_GP,substr(ACCOUNT_NUMBER,1,3) as Prod_Type,ACCOUNT_NUMBER,PRODUCT_GP,ACCOUNT_OPEN_DATE,TENOR,TIME_ON_BOOK,
+	OUTSTANDING_BALANCE,DATE_CLOSE,PLANNED_END_DATE,
+	case
+	when EARLY_TERMINATION='REFINANCING SETTLEMENT' then 'RPO'
+	when EARLY_TERMINATION='EARLY SETTLEMENT' then 'EPO'
+	when EARLY_TERMINATION='DRP SETTLEMENT' then 'DPO'
+	when EARLY_TERMINATION='NORMAL SETTLEMENT' then 'NPO'
+	when EARLY_TERMINATION='WRITE-OFF' then 'WO' 
+	else 'NA' end as EARLY_TERMINATION,*	
+from PINE_PL.ploan_&yr&mo
+order by CUSTOMER_NUMBER,ACCT,LOAN_STATUS;quit;		
+
+data PINE_PL.PL_&yr&mo(drop=business_mode);
+merge 	PINE_PL.PL_&yr&mo(in=t) 
+	PINE_PL.origination(keep=customer_number ACCT act_date business_mode Bus_Mode P_AMT Gross_AMT where=(ACT_Date="&yr.&mo" and business_mode^='Revolving Review'));
+by customer_number acct;
+if t;run;
+
+proc sql;
+create table PINE_PL.PL_&yr&mo as
+select AS_OF_DATE,CUSTOMER_NUMBER,ACCT,Product,Prod_Grp,LOAN_STATUS,SUBPRODUCT_GP,Bus_Mode,Prod_Type,ACCOUNT_NUMBER,PRODUCT_GP,ACCOUNT_OPEN_DATE,
+ACT_Date,TENOR,TIME_ON_BOOK,P_AMT,Gross_AMT,OUTSTANDING_BALANCE,DATE_CLOSE,PLANNED_END_DATE,EARLY_TERMINATION,RATE_FLAG,SECURE_FLAG,TERM_FLAG,
+PURPOSE_OF_ADVANCE,INTEREST_RATE,BEHAVIOURAL_SCORE,PAYMENT_FREQ,CURRENT_PAY_MTD,CONTRACTUAL_PAYMENT,MIN_PAY_RATIO,TOTAL_PAYMENT_AMOUNT,
+LAST_PAID_DATE,NEXT_DUE_DATE,DELINQUENCY_BUCKET,WRITEOFF_DATE,WRITEOFF_AMT,FRAUD
+from PINE_PL.PL_&yr&mo;quit;
+
+proc sort data=PINE_PL.PL_&yr&mo; by customer_number acct;run;
+
+		%end;
+	%end;
+%end;
+%mend PL;
+
+%PL
+/**/
+
+
+
+/*dhl_data5*/
+options mlogic;
+ods noproctitle;
+
+/**START**/
+%macro LL;
+%let prod=DHL;
+%let yrmo=1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312;
+%do j=1 %to 36;
+%let one=%substr(%str(&yrmo),(&j*5-4),4);
+%let two=%substr(%str(&yrmo),(5+(&j*5)-4),4);
+
+/*%let prod=DHL;
+%let one=1101;
+%let two=1102;*/
+data &prod..PL_&prod._&one;
+set PINE_PL.PL_&one;
+if Prod_Grp="&prod";
+LS1=LOAN_STATUS;run;
+
+data &prod..PL_&prod._&two;
+set PINE_PL.PL_&two;
+if Prod_Grp="&prod";
+LS2=LOAN_STATUS;run;
+
+%let date=&two;
+data &prod..&prod._&date &prod..WO_PO_&prod._&one;
+merge &prod..PL_&prod._&one(keep=CUSTOMER_NUMBER ACCT AS_OF_DATE LOAN_STATUS ACCOUNT_OPEN_DATE DATE_CLOSE TENOR TIME_ON_BOOK OUTSTANDING_BALANCE P_AMT EARLY_TERMINATION Bus_Mode ACT_Date)
+	  &prod..PL_&prod._&two(keep=CUSTOMER_NUMBER ACCT AS_OF_DATE LOAN_STATUS ACCOUNT_OPEN_DATE DATE_CLOSE TENOR TIME_ON_BOOK OUTSTANDING_BALANCE P_AMT EARLY_TERMINATION Bus_Mode ACT_Date
+rename=(AS_OF_DATE=_&date ACCOUNT_OPEN_DATE=OPEN_&date DATE_CLOSE=close_&date TENOR=TENOR_&date TIME_ON_BOOK=TIME_OB_&date OUTSTANDING_BALANCE=Bal_&date P_AMT=P_AMT_&date LOAN_STATUS=LS2 
+	EARLY_TERMINATION=Early_Term_&date Bus_Mode=BM_&date ACT_Date=ACT_&date));
+by CUSTOMER_NUMBER ACCT;
+Length Loan_Cat $8;/**/
+	
+if LOAN_STATUS='ACTV' and EARLY_TERMINATION='NA' and LS2='ACTV' and Early_Term_&date='NA' then do;
+	if OUTSTANDING_BALANCE=0 and Bal_&date=0 then Loan_Cat='OBz-OBz';/*LIKELY DATA ERRORS: MoM OB but zero balance??*/
+	else Loan_Cat='OB-OB';end;
+else if LOAN_STATUS='ACTV' and EARLY_TERMINATION='NA' and LS2='SETL' then do;
+	if 		Early_Term_&date='RPO' then Loan_Cat='OB-PO-RF';
+	else if Early_Term_&date='EPO' then Loan_Cat='OB-PO';
+	else if Early_Term_&date='NPO' then Loan_Cat='OB-PO';
+	else if Early_Term_&date='DPO' then Loan_Cat='OB-PO';end;
+else if first.acct=1 and last.acct=1 and first.customer_number=1 and last.customer_number=1 and 
+	LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='ACTV' and Early_Term_&date='NA' then Loan_Cat='OB';
+else if LOAN_STATUS='ACTV' and EARLY_TERMINATION='NA' and LS2='CHRGO' and Early_Term_&date='WO' then Loan_Cat='OB-WO';
+else if LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='SETL' and Early_Term_&date='RPO' then Loan_Cat='RF0';
+else if LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='SETL' and Early_Term_&date='EPO' then Loan_Cat='PO0';
+else if LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='SETL' and Early_Term_&date='NPO' then Loan_Cat='PO0';
+else if first.acct=1 and last.acct=1 and LS2='ACTV' then do;/*<<precation*/
+	if 		first.customer_number=0 and last.customer_number=1 then Loan_Cat='RF1';
+	else if first.customer_number=0 and last.customer_number=0 then Loan_Cat='RF1';
+	else if first.customer_number=1 and last.customer_number=0 then Loan_Cat='RF1';end;
+else if first.acct=1 and last.acct=1 and LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='CHRGO' and Early_Term_&date='WO' then Loan_Cat='WO0';
+if LOAN_STATUS='CHRGO' or LOAN_STATUS='SETL' then do;
+	output &prod..WO_PO_&prod._&one;
+	delete;end;
+output &prod..&prod._&date;run;
+
+proc sort data=&prod..&prod._&date;by CUSTOMER_NUMBER LS2;run;
+data &prod..&prod._&date;
+set &prod..&prod._&date;
+by CUSTOMER_NUMBER LS2;
+if first.customer_number=1 and last.customer_number=0 and first.LS2=1 and last.LS2=0 and 
+	LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='ACTV' and Early_Term_&date='NA' and 
+	Loan_Cat='RF1' then Loan_Cat='OB';/*If don't execut this seperately on different sort key, will overwrite all RF1*/
+else if first.customer_number=0 and last.customer_number=1 and first.LS2=0 and last.LS2=1 and 
+	LOAN_STATUS='' and EARLY_TERMINATION='' and TIME_OB_&date=0 and LS2='ACTV' and Early_Term_&date='NA' and 
+	Loan_Cat='RF1' then Loan_Cat='OB';/*If don't execut this seperately on different sort key, will overwrite all RF1*/
+Length NumVal $4.1;/*Assign Point Values*/
+if Loan_Cat=''  then NumVal='';
+if Loan_Cat='OBz-OBz' then NumVal='0.3';
+if Loan_Cat='OB' then NumVal='0.4';
+if Loan_Cat='OB-OB' then NumVal='1.0';
+if Loan_Cat='OB-WO' then NumVal='1.5';
+if Loan_Cat='WO0' then NumVal='1.6';
+if Loan_Cat='RF1' then NumVal='3.0';
+if Loan_Cat='OB-PO' then NumVal='3.5';
+if Loan_Cat='OB-PO-RF' then NumVal='4.0';
+if Loan_Cat='RF0' then NumVal='5.0';
+if Loan_Cat='PO0' then NumVal='6.0';run;
+
+proc sort data=&prod..&prod._&date;by CUSTOMER_NUMBER ACCT;
+
+data &prod..&prod._&date(drop=Sub_Book);/*compare with origination variables to determine NL/RL/RP*/
+set &prod..&prod._&date;
+by customer_Number ACCT;
+if ACT_&date=&two then Sub_Book=BM_&date;
+*if ACT_&date=&two and Sub_Book='NL' then Book='NL';
+/*Adjustment to Points*/
+if Loan_Cat='OB' and Sub_Book='RL' then do;/*1*/
+	NumVal=NumVal/2;
+	Loan_Cat='RL';end;
+else if Loan_Cat='OB' and Sub_Book='RV' then do;/*1*/
+	NumVal=NumVal*.9;
+	Loan_Cat='RV';end;
+else if Loan_Cat='OB' and Sub_Book='RF' then Loan_Cat='NL';
+else if Loan_Cat='OB' and Sub_Book='NL' then Loan_Cat='NL';
+if Loan_Cat='PO0' and Sub_Book='RL' then do;/*9*/
+	NumVal=NumVal*1.1;
+	Loan_Cat='RL-PO0';end;
+else if Loan_Cat='PO0' and Sub_Book='RF' then do;
+	NumVal=NumVal*.9;
+	Loan_Cat='RF-PO0';end;
+else if Loan_Cat='PO0' and Sub_Book='NL' then Loan_Cat='NL-PO0';
+
+if Loan_Cat='RF0' and Sub_Book='RL' then do;
+	NumVal=NumVal*1.05;
+	Loan_Cat='RL-RF0';end;
+else if Loan_Cat='RF0' and Sub_Book='NL' then do;
+	NumVal=NumVal*.95;
+	Loan_Cat='NL-RF0';end;
+run;
+
+/*duplicate test on suspected revolving accounts*/
+proc sort data=&prod..&prod._&date out=junk nodupkey dupout=&prod..&prod._RV_Test&date(keep=customer_number acct);
+by customer_Number ACCT;run;
+
+data &prod..&prod._RV_Test&date;
+merge &prod..&prod._&date(in=t) &prod..&prod._RV_Test&date(in=dup);
+by customer_number Acct;if t and dup;run;
+
+proc sort data=&prod..&prod._&date noduprecs;by customer_number acct;run;/*Delete dup obs due to RV A/C dups in Origination data*/
+/***/
+
+proc sql;
+create table &prod..&prod._&date as
+select t.*,n.T_NumVal
+from &prod..&prod._&date as t left join (select Customer_Number,round(sum(input(NumVal,3.2)),.01) as T_NumVal
+								from &prod..&prod._&date group by CUSTOMER_NUMBER) as n on t.customer_number=n.customer_number;quit;
+/************/
+														
+%macro wp_all;
+%if &one=1101 %then %do;
+data &prod..WO_PO_&prod._ALL(keep=customer_number LOAN_STATUS rename=(LOAN_STATUS=status_&one));
+set &prod..WO_PO_&prod._&one;run;
+
+proc sql;/*Create base dataset of A/C with WO or PO in prior month and NO activity in current month*/
+create table &prod..WO_PO_&prod._ALL as 
+select t1.Customer_Number,t1.status_&one
+from &prod..WO_PO_&prod._ALL as t1
+where t1.customer_number not in(select customer_number from &prod..&prod._&date);quit;
+%end;
+%mend wp_all;
+%wp_all;
+
+%macro wp_mo;
+%if &one>1101 %then %do;
+proc sql;/*Create dataset of A/C with WO or PO in prior month and NO activity in current month*/
+create table &prod..WO_PO_&prod._&one as
+select t1.Customer_Number,LOAN_STATUS
+from &prod..WO_PO_&prod._&one as t1
+where t1.customer_number not in(select customer_number from &prod..&prod._&date);quit;
+
+data &prod..WO_PO_&prod._all;/*Build rolling 'stock' dataset of A/C with WO or PO in prior months*/
+merge &prod..WO_PO_&prod._all &prod..WO_PO_&prod._&one(rename=(LOAN_STATUS=status_&one));
+by customer_number;
+run;
+%end;
+%mend wp_mo;
+%wp_mo;
+
+
+%macro Book;/*Check if Customers who had PO loans +2 months prior show up w/ new loans in current month report. If so, >>>RL*/
+%if &two>1102 %then %do;
+proc sql noprint;
+select max(_&date) as cdate into :cdate
+from &prod..&prod._&two;quit;
+
+data _null_;
+call symputx('back',put(intnx('month',&cdate,-2,'E'),yymmn5.));run;
+%put _user_;
+
+data &prod..&prod._&date(drop=i) &prod..WOR_&date;
+merge &prod..&prod._&date(in=t) &prod..WO_PO_&prod._ALL(drop=status_&one);
+by customer_number;
+if t;
+array status{*} status_1101 -- status_&back;
+do i=1 to dim(status);
+if status{i}='CHRGO' then output &prod..WOR_&date;
+if status{i}='SETL' and Loan_Cat='OB' then Temp_Book='RL';
+drop status_1101-status_&back;end;
+output &prod..&prod._&date;
+run;
+%end;
+%mend book;
+%book		
+
+
+data &prod..&prod._&date;
+set &prod..&prod._&date;
+if T_NumVal=0.20 and Loan_Cat='RL' then do;/*M_Book >>will become Sub_Book*/
+	Trx_Type='rl';
+	Sub_Book='RL';end;
+else if T_NumVal=0.30 and Loan_Cat='OBz-OBz' then do;
+	Trx_Type='ob';
+	Sub_Book='NA';end;
+else if T_NumVal=0.36 and Loan_Cat='RV' then do;
+	Trx_Type='rv';
+	Sub_Book='RV';end;
+else if T_NumVal=0.40 and Loan_Cat='NL' or Loan_Cat='OB' then do;
+	Trx_Type='nl';
+	Sub_Book='NL';end;
+else if T_NumVal=0.50 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='RL' then Trx_Type='rl';end;
+else if T_NumVal=0.56 then do;
+	Sub_Book='OB';
+	if Loan_Cat='RV' then Trx_Type='rv';
+	if Loan_Cat='RL' then Trx_Type='rl';end;
+else if T_NumVal=0.76 then do;
+	Sub_Book='OB';
+	if Loan_Cat='RV' then Trx_Type='rv';
+	if Loan_Cat='NL' then Trx_Type='nl';end;
+else if T_NumVal=1.00 and Loan_Cat='OB-OB' then do;
+	Trx_Type='ob';
+	Sub_Book='OB';end;
+else if T_NumVal=1.20 then do;
+	Sub_Book='OB';
+	if Loan_Cat='RL' then Trx_Type='rl';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=1.30 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=1.36 then do;
+	Sub_Book='RV';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='RV' then Trx_Type='rv';end;	
+else if T_NumVal=1.40 then do;
+	Sub_Book='OB';
+	if Loan_Cat='NL' then Trx_Type='rl';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=1.50 and Loan_Cat='OB-WO' then do;
+	Trx_Type='wo';
+	Sub_Book='WO';end;
+else if T_NumVal=1.60 and Loan_Cat='WO0' then do;
+	Trx_Type='nl';
+	Trx_Type2='wo';
+	Sub_Book='WO';end;
+else if T_NumVal=2.00 and Loan_Cat='OB-OB' then do;
+	Trx_Type='ob';
+	Sub_Book='OB';end;
+else if T_NumVal=3.00 and Loan_Cat='RF1' then do;
+	Trx_Type='rl';
+	Sub_Book='RL';end;
+else if T_NumVal=3.50 and Loan_Cat='OB-PO' then do;
+	Trx_Type='po';
+	Sub_Book='PO';end;
+else if T_NumVal=3.80 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';end;
+else if T_NumVal=4.00 and Loan_Cat='OB-PO-RF' then do;
+	Trx_Type='po';
+	Sub_Book='PO';end;
+else if T_NumVal=4.30 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='RF1' then Trx_Type='rv';end;
+else if T_NumVal=4.50 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=4.70 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='NL' then Trx_Type='rf';end;
+else if T_NumVal=4.90 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='NL' then Trx_Type='rl';end;
+else if T_NumVal=5.10 then do;
+	Sub_Book='WO';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='WO0' then do;
+		Trx_Type='rl';
+		Trx_Type2='wo';end;end;
+else if T_NumVal=5.36 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RV' then Trx_Type='rv';end;
+else if T_NumVal=5.40 then do;
+	Sub_Book='PO';
+	if Loan_Cat='RF-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;end;
+else if T_NumVal=5.60 then do;
+	Sub_Book='WO';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='WO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='wo';end;end;
+else if T_NumVal=6.00 then do;
+	Sub_Book='PO';
+	if Loan_Cat='NL-PO0' then do;
+		Trx_Type='nl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=6.50 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=6.60 then do;
+	Sub_Book='PO';
+	if Loan_Cat='RL-PO0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=6.70 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';
+	if Loan_Cat='RL' then Trx_Type='rl';end;
+else if T_NumVal=6.80 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=6.86 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';
+	if Loan_Cat='RV' then Trx_Type='rv';end;
+else if T_NumVal=7.00 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=7.30 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=7.36 then do;
+	Sub_Book='RF';
+	if Loan_Cat='RV' then Trx_Type='rv';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=7.40 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';
+	if Loan_Cat='NL' then Trx_Type='rl';end;
+else if T_NumVal=7.50 then do;
+	Sub_Book='OB';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=7.75 then do;
+	Sub_Book='RF';
+	if Loan_Cat='NL-RF0' then do;
+		Trx_Type='nl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=8.00 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OB-OB' then Trx_Type='po';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=8.25 then do;
+	Sub_Book='RF';
+	if Loan_Cat='RL-RF0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=8.90 then do;
+	Sub_Book='PO';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF-RF0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=9.00 then do;
+	Sub_Book='RF';
+	if Loan_Cat='NL-PO0' then do;
+		Trx_Type='nl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=9.40 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;end;
+else if T_NumVal=9.60 then do;
+	Sub_Book='RL';
+	if Loan_Cat='RL-PO0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=10.00 then do;
+	Sub_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=10.10 then do;
+	Sub_Book='PO';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RL-P0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=10.50 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=11.75 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RL-RF0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=12.00 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=12.40 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=13.00 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';
+	if Loan_Cat='PO0' then do;
+		Trx_Type='rv';
+		Trx_Type2='po';end;end;
+else if T_NumVal=13.10 then do;
+	Sub_Book='RF';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RL-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+N=1;
+run;
+
+data Trx2(rename=(Trx_Type2=Trx_Type));
+set &prod..&prod._&date(drop=N);
+if Trx_Type2^='';
+N=2;run;
+
+
+data &prod..&prod._&date;
+merge &prod..&prod._&date(in=t drop=Trx_Type2) 
+		Trx2(keep=customer_number T_NumVal Sub_Book acct N Trx_Type);
+by customer_number acct n;
+If Sub_Book='OB' or Sub_Book='NL' or Sub_Book='RL' or Sub_Book='RF' or Sub_Book='RV' then M_Book='OB';
+else if Sub_Book='PO' then M_Book='PO';
+else if Sub_Book='WO' then M_Book='WO';
+run;
+
+
+/****TEST****/
+proc sql;
+create table &prod..NumTEST_&date as
+select *
+from &prod..&prod._&date
+where T_NumVal not in
+(0.20,0.30,0.36,0.40,0.50,0.56,0.76,1.00,1.20,1.30,1.36,1.40,1.50,1.60,2.00,3.00,3.50,3.80,4.00,4.30,4.50,4.70,4.90,5.10,5.36,5.40,5.60,6.00,6.50,6.60,6.70,6.80,6.86,7.00,7.30,7.36,7.40,7.50,7.60,7.75,8.00,8.25,8.90,9.00,9.40,9.60,10.00,10.10,10.50,11.75,12.00,12.40,13.00,13.10);quit;
+
+
+/*0.2,0.3,0.5,0.36,0.4,1.0,1.2,1.3,1.36,1.4,1.5,1.6,2.0,3.0,3.5,4.5,5.1,6.0,6.5,6.6,7.0,7.8,8.0,8.25,8.3,9,9.4,9.6,10.0,10.1,10.5,11.75,11.8,12.0,12.4,13.1
+(0.2,0.3,0.4,0.5,1.0,1.2,1.3,1.5,1.6,2.0,3.0,3.5,3.8,4.0,4.3,5.2,5.6,4.5,4.7,6.0,6.5,6.6,6.7,6.8,7.0,7.2,7.3,7.5,7.6,8.0,9.0,9.6,10,10.1,10.5,10.6,11.5,11.6,12.0,13.1,13.6)*/
+
+proc freq data=&prod..&prod._&date;
+tables T_NumVal / norow nocum nocol nopercent;
+title "&prod as of &date";
+run;
+
+/***Code to confirm AC# and Unique Cust***/
+data AC_&prod._&date;
+set &prod..&prod._&date;
+if Sub_Book^='WO' and Sub_Book^='PO' and N=1;run;
+
+proc sql;
+create table UQ_&prod._&date as
+select Customer_Number,count(CUSTOMER_NUMBER) as Count
+from AC_&prod._&date
+group by Customer_Number
+order by count,customer_number;quit;
+/****/
+/*
+data test;
+set &prod..&prod._&date;
+if T_NumVal=4.70;run;
+
+proc sql;
+create table test1 as
+select Customer_Number,count(CUSTOMER_NUMBER) as Count
+from test 
+group by Customer_Number
+order by count,customer_number;quit;
+
+/**************/
+
+data &prod..Comp_1102_&two;
+merge &prod..&prod._1102(in=t) &prod..&prod._&two(keep=customer_number acct N Sub_Book rename=(N=N_&two Sub_Book=S_book_&two));
+by customer_number acct;
+if N=1 or N_&two=1;
+Trans=catx('-',Sub_book,S_book_&two);
+if Trans='OB-OB' then Trans='a. OB-OB';
+else if Trans='OB-RF' then Trans='b. OB-RF';
+else if Trans='OB-RL' then Trans='c. OB-RL';
+else if Trans='OB-PO' then Trans='d. OB-PO';
+else if Trans='OB-WO' then Trans='e. OB-WO';
+else if Trans='NL-OB' then Trans='f. NL-OB';
+else if Trans='NL-RF' then Trans='g. NL-RF';
+else if Trans='NL-RL' then Trans='h. NL-RL';
+else if Trans='NL-PO' then Trans='i. NL-PO';
+else if Trans='NL-WO' then Trans='j. NL-WO';
+else if Trans='RF-OB' then Trans='k. RF-OB';
+else if Trans='RF-RF' then Trans='l. RF-RF';
+else if Trans='RF-RL' then Trans='m. RF-RL';
+else if Trans='RF-PO' then Trans='n. RF-PO';
+else if Trans='RF-WO' then Trans='o. RF-WO';
+else if Trans='RL-OB' then Trans='p. RL-OB';
+else if Trans='RL-RF' then Trans='q. RL-RF';
+else if Trans='RL-RL' then Trans='r. RL-RL';
+else if Trans='RL-PO' then Trans='s. RL-PO';
+else if Trans='RL-WO' then Trans='t. RL-WO';
+else if Trans='OB' then Trans='u. OB';
+else if Trans='NL' then Trans='v. NL';
+else if Trans='RF' then Trans='w. RF';
+else if Trans='RL' then Trans='x. RL';
+else if Trans='PO' then Trans='y. PO';
+else if Trans='WO' then Trans='z. WO';
+run;
+
+%end;
+%mend LL;
+
+%LL
+
+
+/*%macro Total(two=&two,prod=&prod);*/
+%macro Total;
+%if &two=1102 %then %do;
+proc freq data=&prod..Comp_1102_1102;
+tables Trans / nocol norow nocum nopercent;
+ods output OneWayFreqs=&prod..TTL_&prod._1102;
+run;
+
+data &prod..TTL_&prod._1102;
+set &prod..TTL_&prod._1102(drop=F_Trans rename=(FREQUENCY=_1102));
+run;%end;
+
+%else %if &two>1102 %then %do;
+proc freq data=&prod..Comp_1102_&two;
+tables Trans / nocol norow nocum nopercent;
+ods output OneWayFreqs=&prod..TTL_&prod._&two;
+run;
+data &prod..TTL_&prod._&two;
+set &prod..TTL_&prod._&two(drop=F_Trans rename=(FREQUENCY=_&two));
+run;%end;
+%end;
+%mend Total;
+
+%Total
+
+%macro fd;
+%let prod=DHL;
+%let yrmo=1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312;
+%do j=35%to 35;
+%let one=%substr(%str(&yrmo),(&j*5-4),4);
+%let two=%substr(%str(&yrmo),(5+(&j*5)-4),4);
+proc freq data=&prod..Comp_1102_&two;
+tables Trans / nocol norow nocum nopercent;
+ods output OneWayFreqs=&prod..TTL_&prod._&two;
+run;
+data &prod..TTL_&prod._&two;
+set &prod..TTL_&prod._&two(drop=F_Trans rename=(FREQUENCY=_&two));
+run;
+%end;
+%mend fd;
+
+%fd
+
+data Vint_Blank;
+Trans='a. OB-OB';output;
+Trans='b. OB-RF';output;
+Trans='c. OB-RL';output;
+Trans='d. OB-PO';output;
+Trans='e. OB-WO';output;
+Trans='f. NL-OB';output;
+Trans='g. NL-RF';output;
+Trans='h. NL-RL';output;
+Trans='i. NL-PO';output;
+Trans='j. NL-WO';output;
+Trans='k. RF-OB';output;
+Trans='l. RF-RF';output;
+Trans='m. RF-RL';output;
+Trans='n. RF-PO';output;
+Trans='o. RF-WO';output;
+Trans='p. RL-OB';output;
+Trans='q. RL-RF';output;
+Trans='r. RL-RL';output;
+Trans='s. RL-PO';output;
+Trans='t. RL-WO';output;
+Trans='u. OB';output;
+Trans='v. NL';output;
+Trans='w. RF';output;
+Trans='x. RL';output;
+Trans='y. PO';output;
+Trans='z. WO';output;
+run;
+
+data &prod._Vintage_1102;
+merge Vint_Blank
+DHL.TTL_DHL_1102 DHL.TTL_DHL_1103 DHL.TTL_DHL_1104 DHL.TTL_DHL_1105 DHL.TTL_DHL_1106 DHL.TTL_DHL_1107 DHL.TTL_DHL_1108 DHL.TTL_DHL_1109 DHL.TTL_DHL_1110 DHL.TTL_DHL_1111 DHL.TTL_DHL_1112 DHL.TTL_DHL_1201 DHL.TTL_DHL_1202 DHL.TTL_DHL_1203 DHL.TTL_DHL_1204 DHL.TTL_DHL_1205 DHL.TTL_DHL_1206 DHL.TTL_DHL_1207 DHL.TTL_DHL_1208 DHL.TTL_DHL_1209 DHL.TTL_DHL_1210 DHL.TTL_DHL_1211 DHL.TTL_DHL_1212 DHL.TTL_DHL_1301 DHL.TTL_DHL_1302 DHL.TTL_DHL_1303 DHL.TTL_DHL_1304 DHL.TTL_DHL_1305 DHL.TTL_DHL_1306 DHL.TTL_DHL_1307 DHL.TTL_DHL_1308 DHL.TTL_DHL_1309 DHL.TTL_DHL_1310 DHL.TTL_DHL_1311 DHL.TTL_DHL_1312;
+by Trans;run;
+
+proc export data=&prod._Vintage_1102
+outfile="C:\Documents and Settings\225273\My Documents\Pine\Tape_Data\&prod._Vintage_1102.csv" 
+dbms=csv replace;run;
+
+
+
+
+
+proc freq data=DHL.COMP_1102_1312;/*the Frequency Missing can mostly be vetted by omitting Trx_Type^='wo' and Trx_Type^='po'*/
+tables Trans*S_book_1312 / nocol norow nocum nopercent;
+run;
+
+
+
+
+
+data tester;
+set testo;
+if S_book_&two='' and (Trx_Type^='wo' and Trx_Type^='po');run;
+proc freq data=tester;
+tables Trx_Type / nocol norow nocum nopercent;
+run;
+
+
+
+
+proc sort data=WORK.TESTO out=testor; by customer_number acct;
+where Sub_Book='';run;
+
+proc freq data=testor;
+tables Trans*S_book_&one / nocol norow nocum nopercent;
+run;
+
+
+
+proc freq data=&prod..&prod._&date;
+tables Trx_Type*Sub_Book / nocol norow nocum nopercent;
+run;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+proc sort data=&prod..&prod._&date;by Book Loan_Cat Loan_Status LS2;run;
+
