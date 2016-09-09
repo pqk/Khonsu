@@ -1,0 +1,1907 @@
+/*Sub1_Eligible*/
+
+data sfdata.sub1_elig1312_part(rename=(C027=C027s C028=C028s C029=C029s C030=C030s C031=C031s l_type=l_type_sub) drop=PR);
+merge SFDATA.sub1_eligible1312(in=e) SFDATA.pror_sum1312(keep=serialno pr002 rename=(pr002=PR));
+if e;
+if PR='' then gz_s='non_gz';
+else gz_s='gz';
+run;
+
+data sfdata.sub1_elig1312_part(drop=c027 c028 c029 c030 c031);
+merge sfdata.sub1_elig1312_part(in=e) SFDATA.cust1312(keep=serialno C027 C028 C029 C030 C031);
+if e;
+/*New legal flag variables*/
+array bl(*) c027 - c031; 
+	if	bl(1)=1 or bl(2)=1 or bl(3)=1 or bl(4)=1 or bl(5)=1
+	then legal_type_s=1 ;
+
+	else if	bl(1)=2 or bl(2)=2 or bl(3)=2 or bl(4)=2 or	bl(5)=2
+	then legal_type_s=2 ;
+
+	else if bl(1) in (42,75) or bl(2) in (42,75) or	bl(3) in (42,75) or	bl(4) in (42,75) or bl(5) in (42,75)
+	then legal_type_s=3 ;
+
+	else if bl(1) in (19,20,79) or 	bl(2) in (19,20,79) or 	bl(3) in (19,20,79) or	bl(4) in (19,20,79) or 	bl(5) in (19,20,79) 
+	then legal_type_s=4 ;
+
+	else if bl(1) in (70,74) or bl(2) in (70,74) or	bl(3) in (70,74) or	bl(4) in (70,74) or bl(5) in (70,74)
+	then legal_type_s=5 ;
+
+	else if bl(1) in (5,41,56) or bl(2) in (5,41,56) or	bl(3) in (5,41,56) or bl(4) in (5,41,56) or bl(5) in (5,41,56)
+	then legal_type_s=6 ;
+
+	else if bl(1) in (55,77) or	bl(2) in (55,77) or	bl(3) in (55,77) or	bl(4) in (55,77) or	bl(5) in (55,77)
+	then legal_type_s=7 ;
+
+	else if bl(1) in (80,81) or bl(2) in (80,81) or	bl(3) in (80,81) or	bl(4) in (80,81) or	bl(5) in (80,81)
+	then legal_type_s=8;
+	
+	else legal_type_s=0;
+
+	/***** Eligible Flag *****/
+	eligible_flag_s=(legal_type_s=0);
+	
+if legal_type_s=3 or legal_type_s=4 or legal_type_s=5 or legal_type_s=6 or legal_type_s=7 or legal_type_s=8 then L_type_s='3-8';
+else if legal_type_s=1 or legal_type_s=2 then L_type_s='1,2';
+else L_type_s='0';
+
+if L_type_s='1,2' or L_type_s='0' then LI_S=0; else LI_S=1;
+
+/*modify existing legal flag variables*/
+if l_type_sub="BKO" then lt_sub=1;
+else if l_type_sub="DEATH" then lt_sub=2;
+else if l_type_sub="CRL" then lt_sub=3;
+else if l_type_sub="LAWYER"  then lt_sub=4;
+else if l_type_sub="JUDICIAL"  then lt_sub=5;
+else if l_type_sub="MEDIATION" or l_type_sub="TOKUTEICHO" then lt_sub=6;
+else if l_type_sub="SHIHOSHOSH" then lt_sub=7;
+else if l_type_sub="RIGHTPARTY" then lt_sub=8;
+else if l_type_sub="OTHER" then lt_sub=0;
+
+if lt_sub=3 or lt_sub=4 or lt_sub=5 or lt_sub=6 or lt_sub=7 or lt_sub=8 then legal_type_sub='3-8';
+else if lt_sub=1 or lt_sub=2 then legal_type_sub='1,2';
+else legal_type_sub='0';
+if legal_type_sub='1,2' or legal_type_sub='0' then LI_Sub=0; else LI_Sub=1;
+
+if excld=0 then Sub_Model=1;else Sub_Model=0;
+run;
+
+data sfdata.comp1312_sub1;
+merge SFDATA.bo_eligible1312_part sfdata.sub1_elig1312_part;
+by SERIALNO;
+length Model $11.;
+if BO_Model=1 and sub_Model=1 then Model='in_both';
+else if BO_Model=1 and sub_Model=0 then Model='not-in_SU';
+else if BO_Model=0 and sub_Model=1 then Model='not_in_BO';
+else if (BO_Model=. and sub_Model=.) or (BO_Model=0 and sub_Model=0) then Model='not_in_both';
+else if BO_Model=. then do; BO_Model=3; Model='not_in_BO';end;
+else if Sub_Model=. then do; Sub_Model=3; Model='not-in_SU';end;
+run;
+
+/*Generates EXACT Eligible as Sub-Model 1312*/
+data Sub1_elig;
+set SFDATA.SUB1_ELIG1312_PART;
+where Sub_Model=1;run;
+/**/
+
+/*create dataset for where only incl elig values from both models*/
+data SFDATA.COMP1312_SUB1_Elig;
+set SFDATA.COMP1312_SUB1;
+where
+(BO_Model=1 and sub_Model=1) or
+(BO_Model=0 and sub_Model=1) or
+(BO_Model=3 and sub_Model=1) or
+(BO_Model=1 and sub_Model=0) or
+(BO_Model=1 and sub_Model=3);run;
+
+/*bringin gz variable for purposes of comp*/
+data SFDATA.comp1312_sub_elig(rename=(gz=gz_AL sol=sol_AL));
+merge SFDATA.comp1312_sub_elig(in=e) SFDATA.status_score1312_part(keep=serialno gz sol LI_AL);
+by SERIALNO;if e;run;
+
+data SFDATA.comp1312_sub_elig(drop=gz);
+merge SFDATA.comp1312_sub_elig(in=e) SFDATA.comp1312(keep=serialno AL_Model AL);
+by SERIALNO;if e;run;
+/**/
+
+
+
+/*analysis*/
+proc freq data=SFDATA.COMP1312_SUB1_Elig;
+table gz_s*bo_Model  /norow nocum nocol nopercent;
+where sub_Model=1;*sol_al='sol' or gz_al='gz' or LI_al='1';
+run;
+
+ and l_type_s='1,2'
+ 
+proc freq data=SFDATA.COMP1312_SUB1_Elig;
+table excld*BO_Model  /norow nocum nocol nopercent;
+where Sub_Model=1;*sol_al='sol' or gz_al='gz' or LI_al='1';
+run;
+
+
+proc freq data=SFDATA.COMP1312_SUB1_Elig;
+table excld*Sub_Model  /norow nocum nocol nopercent;
+*where Al_Model=0;*sol_al='sol' or gz_al='gz' or LI_al='1';
+run;
+
+
+
+proc freq data=sfdata.comp1312_sub;
+table gz_seg1*Model  /norow nocum nocol nopercent;
+*where bo_gz='non_gz';
+run;
+
+
+
+/*analysis*/
+proc freq data=SFDATA.COMP1312_SUB_Elig;
+table gz_al*sub_model  /norow nocum nocol nopercent;
+run;
+
+proc freq data=SFDATA.COMP1312_SUB1;
+table BO_Model*Sub_Model  /norow nocum nocol nopercent;
+*where Al_Model=0;*sol_al='sol' or gz_al='gz' or LI_al='1';
+run;
+
+proc freq data=sfdata.comp1312_sub;
+table BO_Model*Sub_Model  /norow nocum nocol nopercent;
+*where bo_gz='non_gz';
+run;
+
+
+
+data test;
+set SFDATA.COMP1312_SUB;
+if gz_seg=se004 then Check=0;else Check=1;
+if Check;
+run;
+
+/*AL_Eligible*/
+/*Generates EXACT Eligible as Alpina Model 1312*/
+data Al_Elig;
+set SFDATA.status_score1312;
+where gz='non_gz' and sol='not_sol' and LI=0 and seg in ('A-1','A-2-1','A-2-2','B-1','B-2','C') and status in ('paid-off','on-book','write-off');run;
+/**/
+
+/*Create variables in Alpina eligible data in order to compare discrepancy w/ BO Eligible*/
+data SFDATA.status_score1312_part;
+set SFDATA.status_score1312(keep=SERIALNO seg gz sol LI l_type gz_status status status_pre elapse_year posinega1 posinega2
+C027 C028 C029 C030 C031 rename=(LI=LI_al l_type=L_type_al C027=C027al C028=C028al C029=C029al C030=C030al C031=C031al));
+if substr(seg,1,3)='A-1' then seg1='A1';
+else if substr(seg,1,3)='A-2' then seg1='A2';
+else if substr(seg,1,3)='B-1' then seg1='B1';
+else if substr(seg,1,3)='B-2' then seg1='B2';
+else seg1=seg;
+
+if substr(seg,1,3)='A-1' or substr(seg,1,1)='R' then seg2='A1R';
+else if substr(seg,1,3)='A-2' then seg2='A2';
+else if substr(seg,1,1)='B' then seg2='B';
+else seg2=seg;
+
+if status='paid-off' or gz_status='paid-off' or status_pre='paid-off' then do; status='PO';gz_status='PO';status_pre='PO';end;
+if status='write-off' or gz_status='write-off' or status_pre='write-off' then do; status='WO';gz_status='WO';status_pre='WO';end;
+if status='on-book' or gz_status='on-book' or status_pre='on-book' then do; status='OB';gz_status='OB';status_pre='OB';end;
+if status='not-used' or gz_status='not-used' or status_pre='not-used' then do; status='NA';gz_status='NA';status_pre='NA';end;
+run;
+
+data SFDATA.STATUS_SCORE1312_PART(drop=pr002);
+merge SFDATA.STATUS_SCORE1312_PART(in=e) SFDATA.pror_sum1312(keep=serialno pr002);
+by SERIALNO;
+if e;
+if pr002='' then gz_s='non_gz';
+else gz_s='gz';
+run;
+
+data SFDATA.status_score1312_part;
+merge SFDATA.status_score1312_part(in=e) SFDATA.cust1312(keep=serialno C027 c028 c029 c030 c031);
+by SERIALNO;
+if e;
+array bl(*) c027 - c031; 
+	if	bl(1)=1 or bl(2)=1 or bl(3)=1 or bl(4)=1 or bl(5)=1
+	then legal_type_s=1 ;
+
+	else if	bl(1)=2 or bl(2)=2 or bl(3)=2 or bl(4)=2 or	bl(5)=2
+	then legal_type_s=2 ;
+
+	else if bl(1) in (42,75) or bl(2) in (42,75) or	bl(3) in (42,75) or	bl(4) in (42,75) or bl(5) in (42,75)
+	then legal_type_s=3 ;
+
+	else if bl(1) in (19,20,79) or 	bl(2) in (19,20,79) or 	bl(3) in (19,20,79) or	bl(4) in (19,20,79) or 	bl(5) in (19,20,79) 
+	then legal_type_s=4 ;
+
+	else if bl(1) in (70,74) or bl(2) in (70,74) or	bl(3) in (70,74) or	bl(4) in (70,74) or bl(5) in (70,74)
+	then legal_type_s=5 ;
+
+	else if bl(1) in (5,41,56) or bl(2) in (5,41,56) or	bl(3) in (5,41,56) or bl(4) in (5,41,56) or bl(5) in (5,41,56)
+	then legal_type_s=6 ;
+
+	else if bl(1) in (55,77) or	bl(2) in (55,77) or	bl(3) in (55,77) or	bl(4) in (55,77) or	bl(5) in (55,77)
+	then legal_type_s=7 ;
+
+	else if bl(1) in (80,81) or bl(2) in (80,81) or	bl(3) in (80,81) or	bl(4) in (80,81) or	bl(5) in (80,81)
+	then legal_type_s=8;
+	
+	else legal_type_s=0;
+
+	/***** Eligible Flag *****/
+	eligible_flag_s=(legal_type_s=0);
+	
+if legal_type_s=3 or legal_type_s=4 or legal_type_s=5 or legal_type_s=6 or legal_type_s=7 or legal_type_s=8 then L_type_s='3-8';
+else if legal_type_s=1 or legal_type_s=2 then L_type_s='1,2';
+else L_type_s='0';
+
+if L_type_s='1,2' or L_type_s='0' then LI_S=0; else LI_S=1;
+
+if gz='non_gz' and sol='not_sol' and LI_al=0 and seg1 in ('A1','A2','B1','B2','C') and status in ('OB','WO','PO') then AL_Model=1;
+else AL_Model=0;run;
+
+proc sql;
+create table SFDATA.STATUS_SCORE1312_PART as
+select 
+SERIALNO,seg,seg1,seg2,gz_status,status,status_pre,elapse_year,posinega1,posinega2,
+C027,c028,c029,c030,c031,C027al,C028al,C029al,C030al,
+C031al,L_type_al,LI_al,gz,sol,Al_Model,gz_s,legal_type_s,L_type_s,LI_S,eligible_flag_S
+from SFDATA.STATUS_SCORE1312_PART
+order by SERIALNO;
+run;
+
+/*Create comparison dataset*/
+data sfdata.comp1312(drop=i);
+merge SFDATA.bo_eligible1312_part SFDATA.STATUS_SCORE1312_PART ;
+by SERIALNO;
+if BO_Model=. then do; BO_Model=3; Model='not_in_BO';end;
+if AL_Model=. then do; AL_Model=3; Model='not-in_AL';end;
+if Model='' and status='' then AL_Model=2;/*No history but incl. in status_score data for unknown reason*/
+if Model='' then Model='in_both';
+
+do i=0 to 1; 
+if BO_Model=i and book1='OB' then BO=catx('_','BO',put(i,3.),book1);
+else if BO_Model=i and book1='WO' then BO=catx('_','BO',put(i,3.),book1);
+else if BO_Model=i and book1='PO' then BO=catx('_','BO',put(i,3.),book1);
+else if BO_Model=i and book1='CO' then BO=catx('_','BO',put(i,3.),book1);
+else if BO_Model=i and book1='NA' then BO=catx('_','BO',put(i,3.),book1);
+
+if AL_Model=i and status='OB' then AL=catx('_','AL',put(i,3.),status);
+else if AL_Model=i and status='WO' then AL=catx('_','AL',put(i,3.),status);
+else if AL_Model=i and status='PO' then AL=catx('_','AL',put(i,3.),status);
+else if AL_Model=i and status='CO' then AL=catx('_','AL',put(i,3.),status);
+else if AL_Model=i and status='NA' then AL=catx('_','AL',put(i,3.),status);end;
+
+if BO_Model=3 then BO=AL;
+if AL_Model=3 then AL=BO;
+
+if AL_Model=2 then do;
+if book1='OB' then AL=catx('_','BO','2',book1);
+else if book1='WO' then AL=catx('_','BO','2',book1);
+else if book1='PO' then AL=catx('_','BO','2',book1);
+else if book1='CO' then AL=catx('_','BO','2',book1);
+else if book1='NA' then AL=catx('_','BO','2',book1);end;
+run;
+
+
+
+/*analysis*/
+proc freq data=SFDATA.COMP1312;
+table BO*AL  /norow nocum nocol nopercent;
+*where bo_gz='non_gz';
+run;
+
+proc freq data=SFDATA.COMP1312;
+table BO_Model*AL_Model  /norow nocum nocol nopercent;
+run;
+
+
+proc freq data=SFDATA.COMP1312;/*43,362*/
+table LI_al*seg1*status  /norow nocum nocol nopercent;
+where L_type not in ('0','1,2','3-8') or BO_Model not in (0,1,3);
+run;
+
+
+proc freq data=SFDATA.COMP1312;
+table AL_Model*seg*Status  /norow nocum nocol nopercent;
+*where AL_Model=1;run;
+
+proc freq data=SFDATA.COMP1312;
+table BO_Model*gz_seg1*book1  /norow nocum nocol nopercent;
+*where BO_Model=1;run;
+
+
+data test;
+set SFDATA.model_eligible1312;
+where book='';run;
+
+proc sort data=test;by AL_model;run;
+
+data test;
+set SFDATA.COMP1312(keep=serialno BO_model AL_Model);run;
+
+
+
+
+data SFDATA.comp1312;
+merge SFDATA.BO_ELIGIBLE1312_PART SFDATA.STATUS_SCORE1312_PART;
+by SERIALNO;run;
+
+data test;
+set SFDATA.comp1312;
+if LI=LI_s then Check=0;else Check=1;
+run;
+
+data temp;
+set temp;
+if LI_s=. then delete;run;
+
+proc sort data=test out=temp;by serialno;where check=1;run;
+
+/*Bo_Eligible*/
+proc sort data=SFDATA.model_eligible1312;by serialno;run;
+
+data sfdata.bo_eligible1312;
+set SFDATA.model_eligible1312;
+if substr(book,1,2)='PO' then book1='PO';
+else if substr(book,1,2)='WO' then book1='WO';
+else if substr(book,1,2)='OB' then book1='OB';
+else book1=book;
+if irrl_flag='-' or irrl_flag='0' or irrl_flag='N' then irrl_flag2='-';
+else irrl_flag2=irrl_flag;
+
+if substr(gz_seg,1,3)='A-1' then gz_seg1='A1';
+else if substr(gz_seg,1,3)='A-2' then gz_seg1='A2';
+else if substr(gz_seg,1,3)='B-1' then gz_seg1='B1';
+else if substr(gz_seg,1,3)='B-2' then gz_seg1='B2';
+else gz_seg1=gz_seg;
+
+if substr(gz_seg,1,3)='A-1' or substr(gz_seg,1,1)='R' then gz_seg2='A1R';
+else if substr(gz_seg,1,3)='A-2' then gz_seg2='A2';
+else if substr(gz_seg,1,1)='B' then gz_seg2='B';
+else gz_seg2=gz_seg;
+
+/*C over 10yr PO Adjust*/
+if book1='PO' and gz_seg2='C' and book='PO' and
+(Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12' or Passed_Bucket='12<=Year<13' or Passed_Bucket='13<=Year<14'
+or Passed_Bucket='14<=Year<15' or Passed_Bucket='15<=Year') then C_Adj=1;else C_Adj=0;
+
+/*BO model Eligible variable*/
+if (portfolio='PL' or portfolio='AF' or portfolio='WC' or portfolio='XS') and
+(book='OB' or book='WO' or book='PO' or book='PO5Y') and eligible_flag=1 and legal_flag=0 and C_Adj=0 then BO_Model=1;
+else BO_Model=0;
+run;
+
+proc sort data=SFDATA.pror_sum1312;by serialno;run;
+data SFDATA.bo_eligible1312(drop=pr002);
+merge SFDATA.bo_ELIGIBLE1312(in=e) SFDATA.pror_sum1312(in=p keep=serialno pr002);
+by SERIALNO;
+if e;
+if pr002='' then bo_gz='non_gz';
+else bo_gz='gz';
+run;
+
+proc sort data=SFDATA.cust1312;by serialno;run;
+data SFDATA.bo_eligible1312;
+merge SFDATA.bo_ELIGIBLE1312(in=e) SFDATA.cust1312(in=c keep=serialno C027 c028 c029 c030 c031);
+by SERIALNO;
+if e;
+array bl(*) c027 - c031; 
+	if	bl(1)=1 or 	bl(2)=1	or 	bl(3)=1	or 	bl(4)=1	or 	bl(5)=1
+	then legal_type=1 ;
+
+	else if	bl(1)=2	or	bl(2)=2	or	bl(3)=2	or	bl(4)=2	or	bl(5)=2
+	then legal_type=2 ;
+
+	else if bl(1) in (42,75) or bl(2) in (42,75) or	bl(3) in (42,75) or	bl(4) in (42,75) or	bl(5) in (42,75)
+	then legal_type=3 ;
+
+	else if bl(1) in (19,20,79)	or 	bl(2) in (19,20,79)	or 	bl(3) in (19,20,79)	or	bl(4) in (19,20,79)	or 	bl(5) in (19,20,79)
+	then legal_type=4 ;
+
+	else if bl(1) in (70,74) or bl(2) in (70,74) or	bl(3) in (70,74) or	bl(4) in (70,74) or bl(5) in (70,74)
+	then legal_type=5 ;
+
+	else if bl(1) in (5,41,56) or bl(2) in (5,41,56) or bl(3) in (5,41,56) or bl(4) in (5,41,56) or	bl(5) in (5,41,56)
+	then legal_type=6 ;
+
+	else if bl(1) in (55,77) or	bl(2) in (55,77) or	bl(3) in (55,77) or	bl(4) in (55,77) or	bl(5) in (55,77)
+	then legal_type=7 ;
+
+	else if bl(1) in (80,81) or bl(2) in (80,81) or bl(3) in (80,81) or	bl(4) in (80,81) or bl(5) in (80,81)
+	then legal_type=8 ;
+
+	else						legal_type=0 ;
+
+	/***** Eligible Flag *****/
+	eligible_flag1=(legal_type=0);
+	
+if legal_type=3 or legal_type=4 or legal_type=5 or legal_type=6 or legal_type=7 or legal_type=8 then L_type='3-8';
+else if legal_type=1 or legal_type=2 then L_type='1,2';
+else L_type='0';
+
+if L_type in('1,2','0') then LI=0; else LI=1;
+run;
+
+proc sql;
+create table SFDATA.BO_ELIGIBLE1312_PART as
+select SERIALNO,portfolio,gz_seg,gz_seg1,gz_seg2,book,book1,Passed_Bucket,C027,c028,c029,c030,c031,legal_type,L_type,LI,eligible_flag,eligible_flag1,bo_gz,BO_Model
+from SFDATA.bo_eligible1312
+order by SERIALNO;
+run;
+
+/*Generates EXACT Eligible as BO Model 1312*/
+data BO_elig;
+set SFDATA.BO_ELIGIBLE1312;
+where BO_Model=1;run;
+/**/
+
+
+
+
+
+
+
+data test;
+set SFDATA.bo_eligible1312;
+if L_type='3-8' and legal_flag=1 then check=0;else check=1;run;
+
+proc sort data=test;by BO_Model;run;
+data test;
+set test;
+where check=1;run;
+
+
+
+
+data elig;
+set elig;
+if eligible_flag1=eligible_flag then check=0;else check=1;run;
+
+proc sort data=elig out=test;by check;where check=1;run;
+
+data SFDATA.bo_eligible1312;
+set SFDATA.bo_eligible1312;
+if legal_type=3 or legal_type=4 or legal_type=5 or legal_type=6 or legal_type=7 or legal_type=8 then L_type='3-8';
+else if legal_type=1 or legal_type=2 then L_type='1,2';
+else L_type='0';run;
+
+proc sort data=elig out=test;by L_type;where L_type='0';run;
+
+
+proc sql;
+create table temp1 as
+select Legal_Flag, count(legal_flag) as LF/*,Eligible_flag,count(Eligible_flag) as EF*/
+from SFDATA.bo_eligible1310
+group by Legal_Flag;quit;
+
+proc sql;
+create table temp2 as
+select Eligible_flag,count(Eligible_flag) as EF
+from SFDATA.bo_eligible1310
+group by eligible_Flag;quit;
+
+
+
+
+
+
+
+
+
+
+
+
+/*analysis*/
+proc freq data=WORK.BO_ELIG;
+tables gz_seg2*book1 /norow nocum nocol nopercent;
+run;
+
+proc freq data=model_eligible1310;
+tables gz_seg*book1 /norow nocum nocol nopercent;
+where gz_seg1='A2';run;
+/**/
+
+/*Comparison data set*/
+data sfdata.BO_eligible1310;
+set sfdata.model_eligible1310;
+if substr(book,1,2)='PO' then book1='PO';
+else if substr(book,1,2)='WO' then book1='WO';
+else if substr(book,1,2)='OB' then book1='OB';
+else book1=book;
+if irrl_flag='-' or irrl_flag='0' or irrl_flag='N' then irrl_flag2='-';
+else irrl_flag2=irrl_flag;
+
+if substr(gz_seg,1,3)='A-1' then gz_seg1='A1';
+else if substr(gz_seg,1,3)='A-2' then gz_seg1='A2';
+else if substr(gz_seg,1,3)='B-1' then gz_seg1='B1';
+else if substr(gz_seg,1,3)='B-2' then gz_seg1='B2';
+else gz_seg1=gz_seg;
+
+if substr(gz_seg,1,3)='A-1' or substr(gz_seg,1,1)='R' then gz_seg2='A1R';
+else if substr(gz_seg,1,3)='A-2' then gz_seg2='A2';
+else if substr(gz_seg,1,1)='B' then gz_seg2='B';
+else gz_seg2=gz_seg;
+run;
+/**/
+
+data status_score;
+set sfdata.status_score(keep=SERIALNO seg gz sol status posinega1 elapse_year);run;
+
+proc sort data=sfdata.BO_eligible1310;by serialno;run;
+proc sort data=status_score;by serialno;run;
+
+data sfdata.Comp;
+merge sfdata.BO_eligible1310(in=e) status_score;
+by serialno;
+if e;
+if seg='' then Model='BO';else Model='AL';
+run;
+
+data sfdata.Comp;
+set sfdata.comp;
+if substr(seg,1,3)='A-1' then seg1='A1';
+else if substr(seg,1,3)='A-2' then seg1='A2';
+else if substr(seg,1,3)='B-1' then seg1='B1';
+else if substr(seg,1,3)='B-2' then seg1='B2';
+else seg1=seg;
+
+if substr(seg,1,3)='A-1' or substr(seg,1,1)='R' then seg2='A1R';
+else if substr(seg,1,3)='A-2' then seg2='A2';
+else if substr(seg,1,1)='B' then seg2='B';
+else seg2=seg;
+
+if status='paid-off' then status='PO';
+else if status='write-off' then status='WO';
+else if status='on-book' then status='OB';
+else if status='not-used' then status='NA';
+run;
+
+data CompA1;
+set sfdata.comp;
+where seg1='A1' and Status='PO' and Model='AL' and sol='not_sol' and gz='non_gz' and posinega1='nega' and eligible_flag=0;
+*where gz_seg2='A1R' and Book1='PO' and BO_Model=1;run;
+
+data CompA2;
+set sfdata.comp;
+where seg2='A2' and Status='PO' and Model='AL' and sol='not_sol' and gz='non_gz' and posinega1='nega' and eligible_flag=0;
+*where gz_seg2='A2' and Book1='PO' and BO_Model=1;run;
+
+data CompB;
+set sfdata.comp;
+where seg2='B' and Status='PO' and Model='AL' and sol='not_sol' and gz='non_gz' and posinega1='nega' and eligible_flag=0;
+*where gz_seg2='B' and Book1='PO' and BO_Model=1;run;
+
+data CompC;
+set sfdata.comp;
+where seg2='C' and Status='PO' and Model='AL' and sol='not_sol' and gz='non_gz' and posinega1='nega' and eligible_flag=0;
+*where gz_seg2='C' and Book1='PO' and BO_Model=1;run;
+
+
+proc freq data=WORK.COMPa1;
+tables gz_seg2*book1*l_type/norow nocum nocol nopercent;
+run;
+
+
+proc freq data=WORK.tempc;
+tables PROR*l_type/norow nocum nocol nopercent;
+run;
+
+legal_flag
+
+sol*posinega1
+
+
+data TempA1;
+set WORK.COMPA1;
+where seg1='';run;
+
+
+data compc;
+merge compc(in=c) SFDATA.pror_sum(keep=serialno pr002);
+by serialno; if c;
+if pr002=. then PROR='null';else PROR='gz';
+run;
+
+
+
+proc freq data=SFDATA.COMP;
+tables eligible_flag*legal_flag /norow nocum nocol nopercent;
+where BO_Model=1;
+run;
+
+
+data WORK.TEMPc;
+set WORK.TEMPc;
+if pr002=. then PROR='null';else PROR='gz';run;
+
+
+
+
+
+
+
+proc freq data=WORK.MODEL_ELIGIBLE1310;
+tables BO_Model /norow nocum nocol nopercent;
+run;
+
+
+data Elig_C_PO;
+set WORK.MODEL_ELIGIBLE1310;
+where book1='PO' and gz_seg2='C';run;
+
+proc freq data=Elig_C_PO;
+tables gz_seg1*book /norow nocum nocol nopercent;
+where gz_seg1='A2';
+run;
+
+/*Elibile_comp_gz*/
+
+/******************************pror file *****************************************/
+
+%macro pror;
+data pror_all; set 
+%do i= 2 %to 65;
+	sfdata.pror%sysfunc(putn(
+	%sysfunc(intnx(month, '31JUL2008'd, &i.)), yymmn4.))
+%end;
+; 
+run;
+proc sort data = pror_all; by serialno; run;
+%mend;
+%pror;
+proc summary data = pror_all; by serialno; var pr002 pr005 pr006 pr007; output out=pror_sum(drop = _type_ _freq_) min(pr002)= sum(pr005 pr006 pr007)=; run;
+proc sort data =pror_sum; by serialno; run;
+
+/*extra*/
+data SFDATA.bo_eligible1310;
+set SFDATA.bo_eligible1310;
+array bl(*) c027 - c031 ; /*34,99,26*/
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type=1 ;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type=2 ;
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type=3 ;
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type=4 ;
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type=5 ;
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type=6 ;
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type=7 ;
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type=8 ;
+
+	else						legal_type=0 ;
+
+	/***** Eligible Flag *****/
+	eligible_flag1 = ( legal_type=0 ) ;run;	
+	
+data SFDATA.bo_eligible1310;
+set SFDATA.bo_eligible1310;
+if eligible_flag1=eligible_flag then check=0;else check=1;run;
+
+data SFDATA.COMP;
+set SFDATA.COMP;
+if legal_type=3 or legal_type=4 or legal_type=5 or legal_type=6 or legal_type=7 or legal_type=8 then L_type='3-8';
+else if legal_type=1 or legal_type=2 then L_type='1,2';
+else L_type='0';run;
+
+
+
+proc sql;
+create table temp1 as
+select Legal_Flag, count(legal_flag) as LF/*,Eligible_flag,count(Eligible_flag) as EF*/
+from SFDATA.bo_eligible1310
+group by Legal_Flag;quit;
+
+proc sql;
+create table temp2 as
+select Eligible_flag,count(Eligible_flag) as EF
+from SFDATA.bo_eligible1310
+group by eligible_Flag;quit;
+
+
+
+data SFDATA.comp;
+merge SFDATA.comp(in=comp) SFDATA.BO_ELIGIBLE1310(keep=serialno C027 C028 C029 C030 C031 legal_type eligible_flag1 check); 
+by serialno;if comp;
+run;
+
+/*AL Model & BO Model Comparison--to match Miki-san spreadsheet*/
+data BO_AL_E;
+set sfdata.comp;where 
+/*BO*/ eligible_flag=1 and 
+/*AL*/(Model='AL' and sol='not_sol' and gz='non_gz');run;
+
+data nBO_AL_E;
+set sfdata.comp;where 
+/*BO*/ eligible_flag=0 and 
+/*AL*/(Model='AL' and sol='not_sol' and gz='non_gz');run;
+
+data BO_nAL_E;
+set sfdata.comp;where
+/*BO*/ eligible_flag=1 and 
+/*AL*/(Model^='AL' and sol^='not_sol' and gz^='non_gz');run;
+
+data nBO_nAL_E;
+set sfdata.comp;where
+/*BO*/ eligible_flag=0 and 
+/*AL*/(Model^='AL' and sol^='not_sol' and gz^='non_gz');run;
+
+
+data test;
+set WORK.NBO_AL_E;
+where book='PO5Y' and gz_seg='C' and status='PO' and seg='C';run;
+
+proc sort data=test;by serialno;run;
+data test;
+merge test(in=t) SFDATA.pror_sum(keep=serialno pr002);
+by serialno;if t;
+if pr002=. then PROR='null';else PROR='gz';run;
+run;
+
+
+proc freq data=WORK.TEST;
+tables legal_flag/norow nocum nocol nopercent;
+where PROR='null';
+run;
+
+
+/*GZ_Parameter_Pool_DB_test*/
+/**********************/
+/*CP Automatic Update */
+/**********************/
+
+%let date='30Nov2013'd;
+
+data _null_ ;
+  s_cut=intck('MONTH','31Jan2000'd,&date);
+  call symput('s_cut',compress(s_cut));run;
+%put %nrstr(&s_cut=) &s_cut;
+
+data _null_ ;
+  e_cut = intck('MONTH','31Jan2000'd,&date);
+  call symput('e_cut',compress(e_cut));run;
+%put %nrstr(&e_cut=) &e_cut;
+
+/***************************/
+/* Macro Parameter Setting */
+/***************************/
+%let ST="01jan2000"d;
+data _null_;
+   call symput("n",intck("month",&ST-1,intnx('day',intnx('month',&date,0),-1))) ;
+run;
+
+/***** Check *****/
+%let rdate=1311
+
+%macro para1 ;
+%do i = &s_cut %to &e_cut;
+%let j = %eval(&i-1) ;
+
+	data acco;
+	merge 	sfdata.Acco&rdate(in=a keep=serialno acc_r_no AC26 AC28 AC32 AC68)
+			sfdata.segm&rdate(in=b	keep=serialno);
+	by	serialno;
+	if	a and b;
+	if	AC26 = '31dec9999'd	then AC26=. ;
+	else AC26=AC26 ;
+
+	if	AC68 = '31dec9999'd	then AC68=. ;
+	else AC68=AC68 ;run ;
+
+	proc sql ;
+	create table acco&rdate as
+	select serialno,min(ac68) as ac68 format=YYMMDD10.,max(ac26) as ac26 format=YYMMDD10.
+	from acco
+	where AC28>0
+	group by serialno;quit;
+
+	data eligible&rdate;
+	merge	sfdata.cust&rdate(in=a)
+			sfdata.segm&rdate(in=b keep=serialno se004)
+			acco&rdate(in=c keep=serialno ac26 ac68);
+	by serialno;
+
+	/***** Book *****/
+	if	c198='1' and C047>0 and C047 ne . then book='WO';
+	else if	C047>0 and C047 ne . then book='OB';
+	else if	c042 not in('31dec9999'd , . )	then book='PO';
+	else book='CO';
+
+
+	/***** Legal Type *****/
+	array bl(*) c027 - c031 ;
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type=1 ;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type=2 ;
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type=3 ;
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type=4 ;
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type=5 ;
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type=6 ;
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type=7 ;
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type=8 ;
+
+	else						legal_type=0 ;
+
+
+	/***** Eligible Flag *****/
+	eligible_flag = ( legal_type=0 ) ;
+
+
+	/***** Mos & Year *****/
+	format Initial_DT YYMMDD10. ;
+	if 	book='WO'			then	Initial_DT = max(ac26,c042) ;
+	else if	book='PO'			then	Initial_DT = min(c143,c144) ;
+	else						Initial_DT = .	;
+
+	if book in('WO','PO')			then
+		do ;
+			Passed_Month= intck('month',Initial_DT,c003)	;
+			Passed_Year = int(Passed_Month/12)		;
+		end ;
+
+	else 
+		do ;
+			Passed_Month= .					;
+			Passed_Year = .					;
+		end ;
+
+
+	/***** Passed Year Bucket *****/
+	length	Passed_Bucket $20 ;
+	
+	if	Passed_Year=.			then	Passed_Bucket = 'NA'		;
+	else if	Passed_Year<=0			then	Passed_Bucket = '0<=Year<1' 	;
+	else if	Passed_Year<=1			then	Passed_Bucket = '1<=Year<2' 	;
+	else if	Passed_Year<=2			then	Passed_Bucket = '2<=Year<3' 	;
+	else if	Passed_Year<=3			then	Passed_Bucket = '3<=Year<4' 	;
+	else if	Passed_Year<=4			then	Passed_Bucket = '4<=Year<5' 	;
+	else if	Passed_Year<=5			then	Passed_Bucket = '5<=Year<6' 	;
+	else if	Passed_Year<=6			then	Passed_Bucket = '6<=Year<7' 	;
+	else if	Passed_Year<=7			then	Passed_Bucket = '7<=Year<8' 	;
+	else if	Passed_Year<=8			then	Passed_Bucket = '8<=Year<9' 	;
+	else if	Passed_Year<=9			then	Passed_Bucket = '9<=Year<10' 	;
+	else if	Passed_Year<=10			then	Passed_Bucket = '10<=Year<11' 	;
+	else if	Passed_Year<=11			then	Passed_Bucket = '11<=Year<12' 	;
+	else if	Passed_Year<=12			then	Passed_Bucket = '12<=Year<13' 	;
+	else if	Passed_Year<=13			then	Passed_Bucket = '13<=Year<14' 	;
+	else if	Passed_Year<=14			then	Passed_Bucket = '14<=Year<15' 	;
+	else						Passed_Bucket = '15<=Year' 	;
+
+	/***** Target *****/
+	if	book ne 'CO'	
+		and
+		se004 in('B-1','B-2','A-2-1','A-2-2','C') 
+		and
+		eligible_flag=1 ;
+	
+	run ;
+
+
+	/***** Summry Export *****/
+	proc sql ;
+	create table sum_eligible&rdate as
+	select
+		c003 as YM format=YYMMDD10.,
+		se004 as gz_seg,
+		book,
+		Passed_Bucket,
+		count(serialno)			as count,
+		sum(C047/1000000)		as mcs_MM
+	from
+		eligible&rdate
+	group by
+		YM,
+		gz_seg,
+		book,
+		Passed_Bucket ;
+	quit ;
+
+%end ;
+
+data	sum_eligible ;
+set
+	%do i = &s_cut %to &e_cut ;
+	 sum_eligible&rdate
+	%end ;
+	;
+run ;
+
+%mend ;
+%para1 ;
+
+/*
+option obs=max ;
+*/
+
+
+proc export data = sum_eligible
+OUTFILE= "~/1_sum_eligible.csv"
+dbms = csv replace ;
+run ;
+
+
+/********/
+/* 2.LI */
+/********/
+/*
+%let	s_cut=	145	;
+%let	e_cut=	167	;
+*/
+
+/*
+option obs=1000 ;
+*/
+
+%macro para2 ;
+%do i = &s_cut %to &e_cut ;
+%let j = %eval(&i-1) ;
+
+	data	li&rdate ;
+	merge	sfdata.cust&rdate
+		(in=a				)
+		sfdata.segm&rdate
+		(in=b	keep=	serialno se004	) 
+		sfdata.irrl&rdate
+		(in=c	keep=	serialno ir004	)
+
+		sfdata.cust&&yymm&j
+		(in=d	keep=	serialno
+				C027
+				C028
+				C029
+				C030
+				C031
+				C042 
+				C047
+				C144
+				C145
+				C198
+			rename=(C027=bop_C027
+				C028=bop_C028
+				C029=bop_C029
+				C030=bop_C030
+				C031=bop_C031
+				C042=bop_C042 
+				C047=bop_C047
+				C144=bop_C144
+				C145=bop_C145
+				C198=bop_C198)	)
+		acco&rdate
+		(in=e	keep=	serialno
+				ac26 
+				ac68		)				
+		;
+	by	serialno ;
+
+	/***** IRRL Flag *****/
+	if	ir004<0	and ir004 ne .		then	irrl_flag='-' 	;
+	else if	ir004=0	and ir004 ne .		then	irrl_flag='0' 	;
+	else if	ir004>0	and ir004 ne .		then	irrl_flag='+' 	;
+	else						irrl_flag='NA'	;
+
+	/***** Book @ LI *****/
+	if	bop_c198='1'
+		and
+		bop_C047 > 0 and bop_C047 ne .	then	book='WO'	;
+
+	else if bop_C047 > 0 and bop_C047 ne .	then	book='OB'	;
+
+	else if bop_c042 not in('31dec9999'd,.)	then	book='PO'	;
+
+	else						book='CO'	;
+
+
+	/***** Legal Type @ EOP *****/
+	array bl(*) c027 - c031 ;
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type=1 ;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type=2 ;
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type=3 ;
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type=4 ;
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type=5 ;
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type=6 ;
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type=7 ;
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type=8 ;
+
+	else						legal_type=0 ;
+
+	/***** Legal Type @ BOP *****/
+	array bop_bl(*) bop_c027 - bop_c031 ;
+	if	bop_bl(1)=1 
+	or 	bop_bl(2)=1 
+	or 	bop_bl(3)=1 
+	or 	bop_bl(4)=1 
+	or 	bop_bl(5)=1			then	bop_legal_type=1 ;
+
+	else if	bop_bl(1)=2 
+	or	bop_bl(2)=2
+	or	bop_bl(3)=2
+	or	bop_bl(4)=2
+	or	bop_bl(5)=2			then	bop_legal_type=2 ;
+
+	else if bop_bl(1) in (42,75) 
+	or 	bop_bl(2) in (42,75) 
+	or 	bop_bl(3) in (42,75) 
+	or	bop_bl(4) in (42,75)
+	or 	bop_bl(5) in (42,75) 		then	bop_legal_type=3 ;
+
+	else if bop_bl(1) in (19,20,79) 
+	or 	bop_bl(2) in (19,20,79) 
+	or 	bop_bl(3) in (19,20,79) 
+	or	bop_bl(4) in (19,20,79) 
+	or 	bop_bl(5) in (19,20,79) 	then	bop_legal_type=4 ;
+
+	else if bop_bl(1) in (70,74) 
+	or 	bop_bl(2) in (70,74) 
+	or 	bop_bl(3) in (70,74) 
+	or	bop_bl(4) in (70,74) 
+	or 	bop_bl(5) in (70,74)		then	bop_legal_type=5 ;
+
+	else if bop_bl(1) in (5,41,56) 
+	or 	bop_bl(2) in (5,41,56) 
+	or 	bop_bl(3) in (5,41,56) 
+	or	bop_bl(4) in (5,41,56) 
+	or 	bop_bl(5) in (5,41,56)		then	bop_legal_type=6 ;
+
+	else if bop_bl(1) in (55,77) 
+	or 	bop_bl(2) in (55,77)
+	or	bop_bl(3) in (55,77)
+	or	bop_bl(4) in (55,77) 
+	or 	bop_bl(5) in (55,77) 		then	bop_legal_type=7 ;
+
+	else if bop_bl(1) in (80,81) 
+	or 	bop_bl(2) in (80,81) 
+	or 	bop_bl(3) in (80,81) 
+	or	bop_bl(4) in (80,81) 
+	or 	bop_bl(5) in (80,81) 		then	bop_legal_type=8 ;
+
+	else						bop_legal_type=0 ;
+
+
+	/***** Mos & Year *****/
+	if 	book='WO'			then	Initial_DT = max(ac26,c042) ;
+	else if	book='PO'			then	Initial_DT =min(c143,c144) ;
+	else						Initial_DT = .	;
+
+	if book in('WO','PO')			then
+		do ;
+			Passed_Month= intck('month',Initial_DT,c003)	;
+			Passed_Year = int(Passed_Month/12)		;
+		end ;
+
+	else 
+		do ;
+			Passed_Month= .					;
+			Passed_Year = .					;
+		end ;
+
+
+	/***** Passed Year Bucket *****/
+	length	Passed_Bucket $20 ;
+	
+	if	Passed_Year=.			then	Passed_Bucket = 'NA'		;
+	else if	Passed_Year<=0			then	Passed_Bucket = '0<=Year<1' 	;
+	else if	Passed_Year<=1			then	Passed_Bucket = '1<=Year<2' 	;
+	else if	Passed_Year<=2			then	Passed_Bucket = '2<=Year<3' 	;
+	else if	Passed_Year<=3			then	Passed_Bucket = '3<=Year<4' 	;
+	else if	Passed_Year<=4			then	Passed_Bucket = '4<=Year<5' 	;
+	else if	Passed_Year<=5			then	Passed_Bucket = '5<=Year<6' 	;
+	else if	Passed_Year<=6			then	Passed_Bucket = '6<=Year<7' 	;
+	else if	Passed_Year<=7			then	Passed_Bucket = '7<=Year<8' 	;
+	else if	Passed_Year<=8			then	Passed_Bucket = '8<=Year<9' 	;
+	else if	Passed_Year<=9			then	Passed_Bucket = '9<=Year<10' 	;
+	else if	Passed_Year<=10			then	Passed_Bucket = '10<=Year<11' 	;
+	else if	Passed_Year<=11			then	Passed_Bucket = '11<=Year<12' 	;
+	else if	Passed_Year<=12			then	Passed_Bucket = '12<=Year<13' 	;
+	else if	Passed_Year<=13			then	Passed_Bucket = '13<=Year<14' 	;
+	else if	Passed_Year<=14			then	Passed_Bucket = '14<=Year<15' 	;
+	else						Passed_Bucket = '15<=Year' 	;
+
+	/***** LI Target *****/
+	if	book ne 'CO'	
+		and
+		se004 in('B-1','B-2','A-2-1','A-2-2','C') 
+		and
+		bop_legal_type=0 
+		and
+		3 <= legal_type <=8 ;
+	
+	run ;
+
+
+	/***** Summry Export *****/
+	proc sql ;
+	create table sum_li&rdate as
+	select
+		c003 as YM format=YYMMDD10.,
+		se004 as gz_seg,
+		book,
+		Passed_Bucket,
+		irrl_flag,
+		count(serialno)			as count,
+		sum(C047/1000000)		as mcs_MM,
+		sum(ir004/1000000)		as irrl_MM
+		
+	from
+		li&rdate
+	group by
+		YM,
+		gz_seg,
+		book,
+		Passed_Bucket,
+		irrl_flag ;
+	quit ;
+
+%end ;
+
+data	sum_li ;
+set
+	%do i = &s_cut %to &e_cut ;
+	 sum_li&rdate
+	%end ;
+	;
+run ;
+
+%mend ;
+%para2 ;
+
+/*
+option obs=max ;
+*/
+
+proc export data = sum_li
+OUTFILE= "~/2_sum_li.csv"
+dbms = csv replace ;
+run ;
+
+
+/*GZ_Paramenter_Pool_DB_v1*/
+libname	gray	"/" ;
+libname master	"/share/world/master" ;
+
+/**********************/
+/*CP Automatic Update */
+/**********************/
+data _null_ ;
+  s_cut=intck('MONTH','31Jan2000'd,today());
+  call symput('s_cut',compress(s_cut));run;
+%put %nrstr(&s_cut=) &s_cut;
+
+data _null_ ;
+  e_cut = intck('MONTH','31Jan2000'd,today());
+  call symput('e_cut',compress(e_cut));run;
+%put %nrstr(&e_cut=) &e_cut;
+
+/***************************/
+/* Macro Parameter Setting */
+/***************************/
+%let ST="01jan2000"d;
+data _null_;
+   call symput("n",intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1))) ;
+run;
+
+/***** Check *****/
+%put %nrstr(&n =) &n ;
+data _null_;
+	%macro YM1 ;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%put &yymm&i;
+	%mend ;
+	%YM1 ;
+run;
+%macro YM2 ;
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i ;
+	%end ;
+%mend ;
+%YM2 ;
+
+/**************/
+/* 1.Eligible */
+/**************/
+/*	%let	s_cut=	145	;
+	%let	e_cut=	167	;*/
+/*option obs=1000 ;*/
+
+/*%macro para1 ;
+%do i = &s_cut %to &e_cut;
+%let j = %eval(&i-1) ;*/
+
+	data acco;
+	merge 	master.acco_master&&yymm&i(in=a keep=serialno acc_r_no AC26 AC28 AC32 AC68)
+			gray.segm&&yymm&i(in=b	keep=serialno);
+	by	serialno;
+	if	a and b;
+	if	AC26 = '31dec9999'd	then AC26=. ;
+	else AC26=AC26 ;
+
+	if	AC68 = '31dec9999'd	then AC68=. ;
+	else AC68=AC68 ;run ;
+
+	proc sql ;
+	create table acco&&yymm&i as
+	select serialno,min(ac68) as ac68 format=YYMMDD10.,max(ac26) as ac26 format=YYMMDD10.
+	from acco
+	where AC28>0
+	group by serialno;quit;
+
+	data eligible&&yymm&i;
+	merge	gray.cust&&yymm&i(in=a)
+			gray.segm&&yymm&i(in=b keep=serialno se004)
+			acco&&yymm&i(in=c keep=serialno ac26 ac68);
+	by serialno;
+
+	/***** Book *****/
+	if	c198='1' and C047>0 and C047 ne . then book='WO';
+	else if	C047>0 and C047 ne . then book='OB';
+	else if	c042 not in('31dec9999'd , . )	then book='PO';
+	else book='CO';
+
+
+	/***** Legal Type *****/
+	array bl(*) c027 - c031 ;
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type=1 ;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type=2 ;
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type=3 ;
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type=4 ;
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type=5 ;
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type=6 ;
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type=7 ;
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type=8 ;
+
+	else						legal_type=0 ;
+
+
+	/***** Eligible Flag *****/
+	eligible_flag = ( legal_type=0 ) ;
+
+
+	/***** Mos & Year *****/
+	format Initial_DT YYMMDD10. ;
+	if 	book='WO'			then	Initial_DT = max(ac26,c042) ;
+	else if	book='PO'			then	Initial_DT = min(c143,c144) ;
+	else						Initial_DT = .	;
+
+	if book in('WO','PO')			then
+		do ;
+			Passed_Month= intck('month',Initial_DT,c003)	;
+			Passed_Year = int(Passed_Month/12)		;
+		end ;
+
+	else 
+		do ;
+			Passed_Month= .					;
+			Passed_Year = .					;
+		end ;
+
+
+	/***** Passed Year Bucket *****/
+	length	Passed_Bucket $20 ;
+	
+	if	Passed_Year=.			then	Passed_Bucket = 'NA'		;
+	else if	Passed_Year<=0			then	Passed_Bucket = '0<=Year<1' 	;
+	else if	Passed_Year<=1			then	Passed_Bucket = '1<=Year<2' 	;
+	else if	Passed_Year<=2			then	Passed_Bucket = '2<=Year<3' 	;
+	else if	Passed_Year<=3			then	Passed_Bucket = '3<=Year<4' 	;
+	else if	Passed_Year<=4			then	Passed_Bucket = '4<=Year<5' 	;
+	else if	Passed_Year<=5			then	Passed_Bucket = '5<=Year<6' 	;
+	else if	Passed_Year<=6			then	Passed_Bucket = '6<=Year<7' 	;
+	else if	Passed_Year<=7			then	Passed_Bucket = '7<=Year<8' 	;
+	else if	Passed_Year<=8			then	Passed_Bucket = '8<=Year<9' 	;
+	else if	Passed_Year<=9			then	Passed_Bucket = '9<=Year<10' 	;
+	else if	Passed_Year<=10			then	Passed_Bucket = '10<=Year<11' 	;
+	else if	Passed_Year<=11			then	Passed_Bucket = '11<=Year<12' 	;
+	else if	Passed_Year<=12			then	Passed_Bucket = '12<=Year<13' 	;
+	else if	Passed_Year<=13			then	Passed_Bucket = '13<=Year<14' 	;
+	else if	Passed_Year<=14			then	Passed_Bucket = '14<=Year<15' 	;
+	else						Passed_Bucket = '15<=Year' 	;
+
+	/***** Target *****/
+	if	book ne 'CO'	
+		and
+		se004 in('B-1','B-2','A-2-1','A-2-2','C') 
+		and
+		eligible_flag=1 ;
+	
+	run ;
+
+
+	/***** Summry Export *****/
+	proc sql ;
+	create table sum_eligible&&yymm&i as
+	select
+		c003 as YM format=YYMMDD10.,
+		se004 as gz_seg,
+		book,
+		Passed_Bucket,
+		count(serialno)			as count,
+		sum(C047/1000000)		as mcs_MM
+	from
+		eligible&&yymm&i
+	group by
+		YM,
+		gz_seg,
+		book,
+		Passed_Bucket ;
+	quit ;
+
+%end ;
+
+data	sum_eligible ;
+set
+	%do i = &s_cut %to &e_cut ;
+	 sum_eligible&&yymm&i
+	%end ;
+	;
+run ;
+
+%mend ;
+%para1 ;
+
+/*
+option obs=max ;
+*/
+
+
+proc export data = sum_eligible
+OUTFILE= "~/1_sum_eligible.csv"
+dbms = csv replace ;
+run ;
+
+
+/********/
+/* 2.LI */
+/********/
+/*
+%let	s_cut=	145	;
+%let	e_cut=	167	;
+*/
+
+/*
+option obs=1000 ;
+*/
+
+%macro para2 ;
+%do i = &s_cut %to &e_cut ;
+%let j = %eval(&i-1) ;
+
+	data	li&&yymm&i ;
+	merge	gray.cust&&yymm&i
+		(in=a				)
+		gray.segm&&yymm&i
+		(in=b	keep=	serialno se004	) 
+		gray.irrl&&yymm&i
+		(in=c	keep=	serialno ir004	)
+
+		gray.cust&&yymm&j
+		(in=d	keep=	serialno
+				C027
+				C028
+				C029
+				C030
+				C031
+				C042 
+				C047
+				C144
+				C145
+				C198
+			rename=(C027=bop_C027
+				C028=bop_C028
+				C029=bop_C029
+				C030=bop_C030
+				C031=bop_C031
+				C042=bop_C042 
+				C047=bop_C047
+				C144=bop_C144
+				C145=bop_C145
+				C198=bop_C198)	)
+		acco&&yymm&i
+		(in=e	keep=	serialno
+				ac26 
+				ac68		)				
+		;
+	by	serialno ;
+
+	/***** IRRL Flag *****/
+	if	ir004<0	and ir004 ne .		then	irrl_flag='-' 	;
+	else if	ir004=0	and ir004 ne .		then	irrl_flag='0' 	;
+	else if	ir004>0	and ir004 ne .		then	irrl_flag='+' 	;
+	else						irrl_flag='NA'	;
+
+	/***** Book @ LI *****/
+	if	bop_c198='1'
+		and
+		bop_C047 > 0 and bop_C047 ne .	then	book='WO'	;
+
+	else if bop_C047 > 0 and bop_C047 ne .	then	book='OB'	;
+
+	else if bop_c042 not in('31dec9999'd,.)	then	book='PO'	;
+
+	else						book='CO'	;
+
+
+	/***** Legal Type @ EOP *****/
+	array bl(*) c027 - c031 ;
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type=1 ;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type=2 ;
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type=3 ;
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type=4 ;
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type=5 ;
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type=6 ;
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type=7 ;
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type=8 ;
+
+	else						legal_type=0 ;
+
+	/***** Legal Type @ BOP *****/
+	array bop_bl(*) bop_c027 - bop_c031 ;
+	if	bop_bl(1)=1 
+	or 	bop_bl(2)=1 
+	or 	bop_bl(3)=1 
+	or 	bop_bl(4)=1 
+	or 	bop_bl(5)=1			then	bop_legal_type=1 ;
+
+	else if	bop_bl(1)=2 
+	or	bop_bl(2)=2
+	or	bop_bl(3)=2
+	or	bop_bl(4)=2
+	or	bop_bl(5)=2			then	bop_legal_type=2 ;
+
+	else if bop_bl(1) in (42,75) 
+	or 	bop_bl(2) in (42,75) 
+	or 	bop_bl(3) in (42,75) 
+	or	bop_bl(4) in (42,75)
+	or 	bop_bl(5) in (42,75) 		then	bop_legal_type=3 ;
+
+	else if bop_bl(1) in (19,20,79) 
+	or 	bop_bl(2) in (19,20,79) 
+	or 	bop_bl(3) in (19,20,79) 
+	or	bop_bl(4) in (19,20,79) 
+	or 	bop_bl(5) in (19,20,79) 	then	bop_legal_type=4 ;
+
+	else if bop_bl(1) in (70,74) 
+	or 	bop_bl(2) in (70,74) 
+	or 	bop_bl(3) in (70,74) 
+	or	bop_bl(4) in (70,74) 
+	or 	bop_bl(5) in (70,74)		then	bop_legal_type=5 ;
+
+	else if bop_bl(1) in (5,41,56) 
+	or 	bop_bl(2) in (5,41,56) 
+	or 	bop_bl(3) in (5,41,56) 
+	or	bop_bl(4) in (5,41,56) 
+	or 	bop_bl(5) in (5,41,56)		then	bop_legal_type=6 ;
+
+	else if bop_bl(1) in (55,77) 
+	or 	bop_bl(2) in (55,77)
+	or	bop_bl(3) in (55,77)
+	or	bop_bl(4) in (55,77) 
+	or 	bop_bl(5) in (55,77) 		then	bop_legal_type=7 ;
+
+	else if bop_bl(1) in (80,81) 
+	or 	bop_bl(2) in (80,81) 
+	or 	bop_bl(3) in (80,81) 
+	or	bop_bl(4) in (80,81) 
+	or 	bop_bl(5) in (80,81) 		then	bop_legal_type=8 ;
+
+	else						bop_legal_type=0 ;
+
+
+	/***** Mos & Year *****/
+	if 	book='WO'			then	Initial_DT = max(ac26,c042) ;
+	else if	book='PO'			then	Initial_DT =min(c143,c144) ;
+	else						Initial_DT = .	;
+
+	if book in('WO','PO')			then
+		do ;
+			Passed_Month= intck('month',Initial_DT,c003)	;
+			Passed_Year = int(Passed_Month/12)		;
+		end ;
+
+	else 
+		do ;
+			Passed_Month= .					;
+			Passed_Year = .					;
+		end ;
+
+
+	/***** Passed Year Bucket *****/
+	length	Passed_Bucket $20 ;
+	
+	if	Passed_Year=.			then	Passed_Bucket = 'NA'		;
+	else if	Passed_Year<=0			then	Passed_Bucket = '0<=Year<1' 	;
+	else if	Passed_Year<=1			then	Passed_Bucket = '1<=Year<2' 	;
+	else if	Passed_Year<=2			then	Passed_Bucket = '2<=Year<3' 	;
+	else if	Passed_Year<=3			then	Passed_Bucket = '3<=Year<4' 	;
+	else if	Passed_Year<=4			then	Passed_Bucket = '4<=Year<5' 	;
+	else if	Passed_Year<=5			then	Passed_Bucket = '5<=Year<6' 	;
+	else if	Passed_Year<=6			then	Passed_Bucket = '6<=Year<7' 	;
+	else if	Passed_Year<=7			then	Passed_Bucket = '7<=Year<8' 	;
+	else if	Passed_Year<=8			then	Passed_Bucket = '8<=Year<9' 	;
+	else if	Passed_Year<=9			then	Passed_Bucket = '9<=Year<10' 	;
+	else if	Passed_Year<=10			then	Passed_Bucket = '10<=Year<11' 	;
+	else if	Passed_Year<=11			then	Passed_Bucket = '11<=Year<12' 	;
+	else if	Passed_Year<=12			then	Passed_Bucket = '12<=Year<13' 	;
+	else if	Passed_Year<=13			then	Passed_Bucket = '13<=Year<14' 	;
+	else if	Passed_Year<=14			then	Passed_Bucket = '14<=Year<15' 	;
+	else						Passed_Bucket = '15<=Year' 	;
+
+	/***** LI Target *****/
+	if	book ne 'CO'	
+		and
+		se004 in('B-1','B-2','A-2-1','A-2-2','C') 
+		and
+		bop_legal_type=0 
+		and
+		3 <= legal_type <=8 ;
+	
+	run ;
+
+
+	/***** Summry Export *****/
+	proc sql ;
+	create table sum_li&&yymm&i as
+	select
+		c003 as YM format=YYMMDD10.,
+		se004 as gz_seg,
+		book,
+		Passed_Bucket,
+		irrl_flag,
+		count(serialno)			as count,
+		sum(C047/1000000)		as mcs_MM,
+		sum(ir004/1000000)		as irrl_MM
+		
+	from
+		li&&yymm&i
+	group by
+		YM,
+		gz_seg,
+		book,
+		Passed_Bucket,
+		irrl_flag ;
+	quit ;
+
+%end ;
+
+data	sum_li ;
+set
+	%do i = &s_cut %to &e_cut ;
+	 sum_li&&yymm&i
+	%end ;
+	;
+run ;
+
+%mend ;
+%para2 ;
+
+/*
+option obs=max ;
+*/
+
+proc export data = sum_li
+OUTFILE= "~/2_sum_li.csv"
+dbms = csv replace ;
+run ;
+
+
+/*Sub_Eligible*/
+data sfdata.sub_elig1312_part(rename=(C027=C027s C028=C028s C029=C029s C030=C030s C031=C031s l_type=l_type_sub) drop=PR);
+merge SFDATA.sub_eligible1312(in=e) SFDATA.pror_sum1312(keep=serialno pr002 rename=(pr002=PR));
+if e;
+if PR='' then gz_s='non_gz';
+else gz_s='gz';
+run;
+
+data sfdata.sub_elig1312_part(drop=c027 c028 c029 c030 c031);
+merge sfdata.sub_elig1312_part(in=e) SFDATA.cust1312(keep=serialno C027 C028 C029 C030 C031);
+if e;
+/*New legal flag variables*/
+array bl(*) c027 - c031; 
+	if	bl(1)=1 or bl(2)=1 or bl(3)=1 or bl(4)=1 or bl(5)=1
+	then legal_type_s=1 ;
+
+	else if	bl(1)=2 or bl(2)=2 or bl(3)=2 or bl(4)=2 or	bl(5)=2
+	then legal_type_s=2 ;
+
+	else if bl(1) in (42,75) or bl(2) in (42,75) or	bl(3) in (42,75) or	bl(4) in (42,75) or bl(5) in (42,75)
+	then legal_type_s=3 ;
+
+	else if bl(1) in (19,20,79) or 	bl(2) in (19,20,79) or 	bl(3) in (19,20,79) or	bl(4) in (19,20,79) or 	bl(5) in (19,20,79) 
+	then legal_type_s=4 ;
+
+	else if bl(1) in (70,74) or bl(2) in (70,74) or	bl(3) in (70,74) or	bl(4) in (70,74) or bl(5) in (70,74)
+	then legal_type_s=5 ;
+
+	else if bl(1) in (5,41,56) or bl(2) in (5,41,56) or	bl(3) in (5,41,56) or bl(4) in (5,41,56) or bl(5) in (5,41,56)
+	then legal_type_s=6 ;
+
+	else if bl(1) in (55,77) or	bl(2) in (55,77) or	bl(3) in (55,77) or	bl(4) in (55,77) or	bl(5) in (55,77)
+	then legal_type_s=7 ;
+
+	else if bl(1) in (80,81) or bl(2) in (80,81) or	bl(3) in (80,81) or	bl(4) in (80,81) or	bl(5) in (80,81)
+	then legal_type_s=8;
+	
+	else legal_type_s=0;
+
+	/***** Eligible Flag *****/
+	eligible_flag_s=(legal_type_s=0);
+	
+if legal_type_s=3 or legal_type_s=4 or legal_type_s=5 or legal_type_s=6 or legal_type_s=7 or legal_type_s=8 then L_type_s='3-8';
+else if legal_type_s=1 or legal_type_s=2 then L_type_s='1,2';
+else L_type_s='0';
+
+if L_type_s='1,2' or L_type_s='0' then LI_S=0; else LI_S=1;
+
+/*modify existing legal flag variables*/
+if l_type_sub="BKO" then lt_sub=1;
+else if l_type_sub="DEATH" then lt_sub=2;
+else if l_type_sub="CRL" then lt_sub=3;
+else if l_type_sub="LAWYER"  then lt_sub=4;
+else if l_type_sub="JUDICIAL"  then lt_sub=5;
+else if l_type_sub="MEDIATION" or l_type_sub="TOKUTEICHO" then lt_sub=6;
+else if l_type_sub="SHIHOSHOSH" then lt_sub=7;
+else if l_type_sub="RIGHTPARTY" then lt_sub=8;
+else if l_type_sub="OTHER" then lt_sub=0;
+
+if lt_sub=3 or lt_sub=4 or lt_sub=5 or lt_sub=6 or lt_sub=7 or lt_sub=8 then legal_type_sub='3-8';
+else if lt_sub=1 or lt_sub=2 then legal_type_sub='1,2';
+else legal_type_sub='0';
+if legal_type_sub='1,2' or legal_type_sub='0' then LI_Sub=0; else LI_Sub=1;
+
+if excld=0 then Sub_Model=1;else Sub_Model=0;
+run;
+
+data sfdata.comp1312_sub;
+merge SFDATA.bo_eligible1312_part sfdata.sub_elig1312_part;
+by SERIALNO;
+length Model $11.;
+if BO_Model=1 and sub_Model=1 then Model='in_both';
+else if BO_Model=1 and sub_Model=0 then Model='not-in_SU';
+else if BO_Model=0 and sub_Model=1 then Model='not_in_BO';
+else if (BO_Model=. and sub_Model=.) or (BO_Model=0 and sub_Model=0) then Model='not_in_both';
+else if BO_Model=. then do; BO_Model=3; Model='not_in_BO';end;
+else if Sub_Model=. then do; Sub_Model=3; Model='not-in_SU';end;
+run;
+
+/*Generates EXACT Eligible as Sub-Model 1312*/
+data Sub_elig;
+set SFDATA.SUB_ELIG1312_PART;
+where Sub_Model=1;run;
+/**/
+
+/*create dataset for where only incl elig values from both models*/
+data SFDATA.COMP1312_SUB_Elig;
+set SFDATA.COMP1312_SUB;
+where
+(BO_Model=1 and sub_Model=1) or
+(BO_Model=0 and sub_Model=1) or
+(BO_Model=3 and sub_Model=1) or
+(BO_Model=1 and sub_Model=0) or
+(BO_Model=1 and sub_Model=3);run;
+
+/*bringin gz variable for purposes of comp*/
+data SFDATA.comp1312_sub_elig(rename=(gz=gz_AL sol=sol_AL));
+merge SFDATA.comp1312_sub_elig(in=e) SFDATA.status_score1312_part(keep=serialno gz sol LI_AL);
+by SERIALNO;if e;run;
+
+data SFDATA.comp1312_sub_elig(drop=gz);
+merge SFDATA.comp1312_sub_elig(in=e) SFDATA.comp1312(keep=serialno AL_Model AL);
+by SERIALNO;if e;run;
+/**/
+
+
+
+proc freq data=sfdata.comp1312_sub;
+table gz_seg1*Model  /norow nocum nocol nopercent;
+*where bo_gz='non_gz';
+run;
+
+/*analysis*/
+proc freq data=SFDATA.COMP1312_SUB_Elig;
+table gz_al*sub_model  /norow nocum nocol nopercent;
+run;
+
+proc freq data=SFDATA.COMP1312_SUB_Elig;
+table BO_Model*Sub_Model  /norow nocum nocol nopercent;
+where Al_Model=0;*sol_al='sol' or gz_al='gz' or LI_al='1';
+run;
+
+proc freq data=sfdata.comp1312_sub;
+table BO_Model*Sub_Model  /norow nocum nocol nopercent;
+*where bo_gz='non_gz';
+run;
+
+
+
+data test;
+set SFDATA.COMP1312_SUB;
+if gz_seg=se004 then Check=0;else Check=1;
+if Check;
+run;
