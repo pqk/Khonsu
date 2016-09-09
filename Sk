@@ -1,0 +1,1067 @@
+/*BUNPU-- IRRL*/
+proc import datafile='C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\SKIRRL\shinki_irrl_comp201309.csv'
+out=IRRL5_201309 dbms=csv replace;
+
+data testov;
+set IRRL5_201309;
+len=length(serialno);
+a=put(serialno,12.);run;
+
+data skirrl.irrl5_201309;
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\SKIRRL\shinki_irrl_comp201309.csv' DLM=',' DSD MISSOVER firstobs=2 LRECL=32760;
+input
+serialno :$32.
+hknos_201309 :BEST32.
+del_kbn :BEST32.
+ym :BEST32.
+solirrl_org :BEST32.
+gzirrl_org :BEST32.
+eliirrl_org :BEST32.
+solirrl_new :BEST32.
+gzirrl_new :BEST32.
+eliirrl_new :BEST32.;
+
+serialno=strip(serialno);
+Len=Length(serialno);
+if len=8 then Temp_no=Serialno;
+else if Len=7 then Temp_no='0'||Serialno;
+else if Len=6 then Temp_no='00'||Serialno;
+
+CUST_ITRN_NO=input(
+/*01*/substr(Temp_no,4,1)||
+/*02*/substr(Temp_no,1,1)||
+/*03*/substr(Temp_no,5,1)||
+/*04*/substr(Temp_no,6,1)||
+/*05*/substr(Temp_no,2,1)||
+/*06*/substr(Temp_no,3,1)||
+/*07*/substr(Temp_no,8,1)||
+/*08*/substr(Temp_no,7,1), 8.);run;
+
+
+data test;
+set SKIRRL.IRRL5_201309;
+serialno=strip(serialno);
+Len=Length(serialno);
+if len=8 then Temp_no=serialno;
+else if Len=7 then Temp_no='0'||Serialno;
+else if Len=6 then Temp_no='00'||Serialno;
+
+CUST_ITRN_NO=input(
+/*01*/substr(Temp_no,4,1)||
+/*02*/substr(Temp_no,1,1)||
+/*03*/substr(Temp_no,5,1)||
+/*04*/substr(Temp_no,6,1)||
+/*05*/substr(Temp_no,2,1)||
+/*06*/substr(Temp_no,3,1)||
+/*07*/substr(Temp_no,8,1)||
+/*08*/substr(Temp_no,7,1), 8.);run;
+proc sort data=test;by Temp_no;run;
+
+
+proc import datafile='C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\SKIRRL\shinki_irrl_comp201309.csv'
+out=skirrl.irrl5_201309 dbms=csv replace;
+
+
+
+
+
+
+
+
+
+
+
+a=put(serial_no,10.);
+backward=input(
+/*01*/substr(a,10,1)||
+/*02*/substr(a,2,1)||
+/*03*/substr(a,6,1)||
+/*04*/substr(a,1,1)||
+/*05*/substr(a,9,1)||
+/*06*/substr(a,5,1)||
+/*07*/substr(a,4,1)||
+/*08*/substr(a,3,1)||
+/*09*/substr(a,8,1)||
+/*10*/substr(a,7,1), 10.);
+
+
+/*BUNPU -- saiken_irrl5*/
+%let date=201209;
+proc import datafile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\SKIRRL\shinki_irrl_comp&date..csv"
+out=skirrl.irrl5_&date dbms=csv replace;
+
+data skirrl.irrl5_&date;
+infile "C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\SKIRRL\shinki_irrl_comp&date..csv" DLM=',' DSD MISSOVER firstobs=2 LRECL=32760;
+input
+serialno :BEST32.
+hknos_&date :BEST32.
+del_kbn :BEST32.
+ym :BEST32.
+solirrl_org :BEST32.
+gzirrl_org :BEST32.
+eliirrl_org :BEST32.
+solirrl_new :BEST32.
+gzirrl_new :BEST32.
+eliirrl_new :BEST32.;
+run;
+
+proc sort data=SKIRRL.IRRL5_&date;by serialno;run;
+data SKIRRL.IRRL5_&date(keep=cust_no cust_itrn_no hknos_&date del_kbn ym solirrl_org gzirrl_org eliirrl_org solirrl_new gzirrl_new eliirrl_new IRRL5_SUM);
+merge CUSTNO.MASTER_LIST(in=list) SKIRRL.IRRL5_&date(rename=(serialno=cust_itrn_no));
+by cust_itrn_no;if list;
+if solirrl_org=. then solirrl_org=0;
+if gzirrl_org=. then gzirrl_org=0;
+if eliirrl_org=. then eliirrl_org=0;
+IRRL5_SUM=solirrl_org+gzirrl_org+eliirrl_org;
+run;
+
+proc sql;
+create table SKIRRL.IRRL5_&date as
+select Cust_no,sum(hknos_&date) as hknos_&date,sum(IRRL5_SUM) as IRRL5_SUM
+from SKIRRL.IRRL5_&date
+group by Cust_no;quit;
+
+data bunpu.saiken&date;
+merge SAIKEN2.SAIKEN&date(in=saiken) SKIRRL.IRRL5_&date(keep=cust_no IRRL5_SUM);
+by cust_no;if saiken;
+
+if IRRL5_SUM<0 then Irrl_Flag1='-';/*Create IRRL flag variable*/
+else if IRRL5_SUM=0 then Irrl_Flag1='0';
+else if IRRL5_SUM>0 then Irrl_Flag1='+';
+else Irrl_Flag1='N';
+
+if Irrl_Flag1='+' or Irrl_Flag1='0' then IRRL_PM1='IRRL>=0';/*Create consolidated IRRL variable*/
+else if Irrl_Flag1='-' then IRRL_PM1='IRRL<0';
+run;
+
+
+/*蜷・怦蛯ｵ讓ｩELIGIBLE縺ｮ髮・ｨ医ヵ繧｡繧､繝ｫ繧貞・蜉帙・//*create subtotaled saiken file in preparation for the creation of a consolidated eligible cust_no file*/
+proc sql;
+create table bunpu.E_&date as
+select Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket,Irrl_Flag1,count(cust_no) as CNT,
+sum(Irrl_sum)/1000000 as IRRL_MM format comma12.3,
+sum(Irrl5_sum)/1000000 as IRRL5_MM format comma12.3 
+from bunpu.saiken&date(where=(Elig='Y'))
+group by Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket,Irrl_Flag1
+order by Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket,Irrl_Flag1;quit;
+
+/*ELIGIBLE縺ｮ髮・ｨ医ヵ繧｡繧､繝ｫ縺ｫBOOK螟画焚繧剃ｽ懈・縲！RRL_PM繧貞・迴ｾ縲〉eorder and sort*//*create/recreate variables for subtotaled saiken data 'eligible' file,reoder and sort*/
+proc sql;
+create table bunpu.E_&date as
+select Year, YM, syohn_grp, ac_scr, Group_Code2, Passed_Bucket, case /*Book螟画焚繧剃ｽ懈・*//*Create Book var*/
+	when GROUP_CODE2='OB' and Passed_Bucket='Null' then 'OB_Null'
+	when GROUP_CODE2='OB' then 'OB'
+	when GROUP_CODE2='PO' and Passed_Bucket='Null' then 'PO_Null'
+	when GROUP_CODE2='PO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'PO10Y'
+	when GROUP_CODE2='PO' and Passed_Bucket='12<=Year' then 'PO12Y'
+	when GROUP_CODE2='PO' then 'PO'
+	when Group_Code2='WO' and Passed_Bucket='Null' then 'WO_Null'
+	when GROUP_CODE2='WO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'WO10Y'
+	when GROUP_CODE2='WO' and Passed_Bucket='12<=Year' then 'WO12Y'
+	when GROUP_CODE2='WO' then 'WO' end as Book, CNT, Irrl_Flag1, case
+	when Irrl_Flag1='+' or Irrl_Flag1='0' then 'IRRL>=0'/*IRRL_PM繧貞・迴ｾ*//*Recreate consolidated IRRL var*/
+	when Irrl_Flag1='-' then 'IRRL<0' end as IRRL_PM1,IRRL_MM,IRRL5_MM
+from bunpu.E_&date
+order by Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket;quit;
+
+data bunpu.E_201009_201309;
+set bunpu.E_201009 bunpu.E_201109 bunpu.E_201209 bunpu.E_201309;run;
+	
+proc export data=bunpu.E_201009_201309
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\E_201009_201309_5pa.csv" 
+dbms=csv replace;run;
+
+/*MASK --mask_ex/
+
+data mask;
+input cust_no $10.;
+datalines;
+0417001879
+0306046535
+0302036086
+0420014405
+0346262153
+;
+
+data Mask_CustNo;/*FIXED*/
+set mask;
+
+/*ENCRYPT*/
+actual=cust_no;
+b=put(actual,10.);
+serial_no=
+input(
+/*01*/substr(b,5,1)||
+/*02*/substr(b,2,1)||
+/*03*/substr(b,9,1)||
+/*04*/substr(b,6,1)||
+/*05*/substr(b,1,1)||
+/*06*/substr(b,3,1)||
+/*07*/substr(b,10,1)||
+/*08*/substr(b,8,1)||
+/*09*/substr(b,4,1)||
+/*10*/substr(b,7,1),10.);
+
+/*DECRYPT*/
+a=put(serial_no,10.);
+if length(strip(serial_no))=9 then a="0"||strip(a);
+
+backward=
+input(
+/*01*/substr(a,5,1)||
+/*02*/substr(a,2,1)||
+/*03*/substr(a,6,1)||
+/*04*/substr(a,9,1)||
+/*05*/substr(a,1,1)||
+/*06*/substr(a,4,1)||
+/*07*/substr(a,10,1)||
+/*08*/substr(a,8,1)||
+/*09*/substr(a,3,1)||
+/*10*/substr(a,7,1), 10.);
+if backward=actual then Test=0;
+else Test=1;run;
+
+/*MASK -- Mask1*/
+data Mask_CustNo;/*FIXED*/
+cust_no=4024109100;
+
+/*ENCRYPT*/
+actual=cust_no;
+b=put(actual,10.);
+serial_no=
+input(
+/*01*/substr(b,5,1)||
+/*02*/substr(b,2,1)||
+/*03*/substr(b,9,1)||
+/*04*/substr(b,6,1)||
+/*05*/substr(b,1,1)||
+/*06*/substr(b,3,1)||
+/*07*/substr(b,10,1)||
+/*08*/substr(b,8,1)||
+/*09*/substr(b,4,1)||
+/*10*/substr(b,7,1),10.);
+
+/*DECRYPT*/
+a=put(serial_no,10.);
+*if length(strip(serial_no))=7 then b="0"||strip(b);
+
+backward=
+input(
+/*01*/substr(a,5,1)||
+/*02*/substr(a,2,1)||
+/*03*/substr(a,6,1)||
+/*04*/substr(a,9,1)||
+/*05*/substr(a,1,1)||
+/*06*/substr(a,4,1)||
+/*07*/substr(a,10,1)||
+/*08*/substr(a,8,1)||
+/*09*/substr(a,3,1)||
+/*10*/substr(a,7,1), 10.);
+if backward=actual then Test=0;
+else Test=1;run;
+
+data Mask_SaikenNo;/*FIXED*/
+cust_no=8051010000;
+
+actual=cust_no;
+
+/*ENCRYPT*/
+b=put(actual,10.);
+serial_no=input(
+/*01*/substr(b,4,1)||
+/*02*/substr(b,2,1)||
+/*03*/substr(b,8,1)||
+/*04*/substr(b,7,1)||
+/*05*/substr(b,6,1)||
+/*06*/substr(b,3,1)||
+/*07*/substr(b,10,1)||
+/*08*/substr(b,9,1)||
+/*09*/substr(b,5,1)||
+/*10*/substr(b,1,1),10.);
+
+/*DECRYPT*/
+a=put(serial_no,10.);
+backward=input(
+/*01*/substr(a,10,1)||
+/*02*/substr(a,2,1)||
+/*03*/substr(a,6,1)||
+/*04*/substr(a,1,1)||
+/*05*/substr(a,9,1)||
+/*06*/substr(a,5,1)||
+/*07*/substr(a,4,1)||
+/*08*/substr(a,3,1)||
+/*09*/substr(a,8,1)||
+/*10*/substr(a,7,1), 10.);
+if backward=actual then Test=0;
+else Test=1;run;
+
+data Mask_custitrn;/*FIXED*/
+Cust_itrn_no=19702710/*92000001*/;
+
+actual=Cust_itrn_no;
+
+/*ENCRYPT*/
+b=put(actual,8.);
+serial_no=input(
+/*01*/substr(b,2,1)||
+/*02*/substr(b,5,1)||
+/*03*/substr(b,6,1)||
+/*04*/substr(b,1,1)||
+/*05*/substr(b,3,1)||
+/*06*/substr(b,4,1)||
+/*07*/substr(b,8,1)||
+/*08*/substr(b,7,1),8.);
+
+/*DECRYPT*/
+a=put(serial_no,8.);
+backward=input(
+/*01*/substr(a,4,1)||
+/*02*/substr(a,1,1)||
+/*03*/substr(a,5,1)||
+/*04*/substr(a,6,1)||
+/*05*/substr(a,2,1)||
+/*06*/substr(a,3,1)||
+/*07*/substr(a,8,1)||
+/*08*/substr(a,7,1), 8.);
+
+if backward=actual then Test=0;
+else Test=1;run;
+
+/*MASK -- kabarai_mask*/
+data kabarai_1009_1203(keep=Cust_itrn_no Exp_CO_Date HRKM_KNGK Wakai_Date);
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\Kabarai\MCS.csv' delimiter=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input Cust_itrn_no :BEST32. Exp_CO_Date :YYMMDD10. HRKM_KNGK :BEST32. Wakai_Date :YYMMDD10.;
+/*rename 謖ｯ霎ｼ莠亥ｮ壼ｹｴ譛域律 >>> Exp_CO_Date 謌千ｫ句ｹｴ譛域律 >>>Wakai_Date*/
+format Exp_CO_Date YYMMDD10. Wakai_Date YYMMDD10.;
+
+actual=Cust_itrn_no;
+a=put(actual,z8.);
+serial_no=
+input(
+substr(a,4,1)||
+substr(a,1,1)||
+substr(a,5,1)||
+substr(a,6,1)||
+substr(a,2,1)||
+substr(a,3,1)||
+substr(a,8,1)||
+substr(a,7,1), 8.);
+
+b=put(serial_no,8.);
+
+if length(strip(serial_no))=7 then b="0"||strip(b);
+
+backward=
+input(
+substr(b,2,1)||
+substr(b,5,1)||
+substr(b,6,1)||
+substr(b,1,1)||
+substr(b,3,1)||
+substr(b,4,1)||
+substr(b,8,1)||
+substr(b,7,1),8.);
+
+if backward=actual then Test=0;
+else Test=1;
+
+run;
+
+proc export data=kabarai_1009_1203 
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\MCS.csv" 
+dbms=csv replace;run;
+
+/*PTSK--LI*/
+%macro wakai;
+%let rdates=201009 201010 201011 201012 201101 201102 201103 201104 201105 201106 201107 201108 201109 201110 201111 201112 201201 201202 201203 201204 201205 201206 201207 201208 201209 201210 201211 201212 201301 201302 201303 201304 201305 201306 201307 201308 201309 ;/*<==don't delete trailing space!*/
+%do j=36 %to 36; /*25=201210 30=201303*/
+%let date=		%substr(%str(&rdates),(7+(&j*7)-6),6);/*date of saiken report to use as basis for LI*/
+%let bef=		%substr(%str(&rdates),(&j*7-6),6);/*saiken report 1 mo. prior to &date above*/
+%put _user_;
+
+/*Step 1:create LI files w/ additional data from new saiken data*/
+data LI&date;
+merge ELIGIBLE.SK_LI_LIST(in=fd drop=saikn_no where=(YM=&date))  
+	  mikeisan.SAIKEN&date(drop=zikozn itib_sky_rkgk);/*--->currently cannot use zikozn itib_sky_rkgk due to accuracy issues--will merge from LI_gengaku_XXXXXX.csv file below*/
+by cust_no; if fd;run;
+
+/*Step 2: XXXXXXmatch correct group_code w/ kabarai data*/
+/*Step2a: create test file to compare prior mo. group_code w/ current group_code and that also from Kabarai&Redux file 201204-201303--should not match in all cases, especially on w/ current mo. OB*/
+data test1&date(keep=cust_no YM Year syohn_grp ac_scr group_code rename=(group_code=GC&date));
+set LI&date;run;
+
+data test1&date;
+merge test1&date(in=t) 
+	mikeisan.SAIKEN&bef(keep=cust_no group_code zikozn itib_sky_rkgk PO_Date LastP_Date PO LP LastPay_Yr PayOff_Yr rename=(group_code=GC&bef));
+by cust_no;if t;if GC&date^=GC&bef then check=1;else check=0;run;
+
+data test1&date;
+merge test1&date(in=t) KABARAI.KABARAI_1010_1309(keep=cust_no YM group_code where=(YM=&date) rename=(group_code=GC));
+by cust_no;if t;if GC&bef^=GC then check1=1;else check1=0;run;
+proc sort data=test1&date; by check1 gc GC&bef;run;
+
+/*Step2b: overwrite group_code in current month LI file w/ group_code from previous month LI new saiken file*/
+proc sort data=test1&date;by cust_no;run;
+data LI&date;/*uses payoff/lastpay data from previous month(&bef)*/
+merge 	LI&date(in=li drop=group_code group_code1 group_code2) /*delete group_code1/group_code because will be using previous mo. data from test file*/
+		mikeisan.SAIKEN&bef(drop=YM zikozn itib_sky_rkgk);
+by cust_no;if li;run;
+
+/*Step 2.5: Merge gengaku and zndk data from LI_gengaku_XXXXXX.csv*/
+data LI&date;
+merge LI&date(in=li) kabarai.Gengaku&date(drop=YM HRKM_KNGK);
+by cust_no;if li;run;
+
+/*Step 3:merge base LI file created above with kabarai data and create subsetting variables*/
+proc sort data=KABARAI.KABARAI_1010_1309;by cust_no;run;
+proc sort data=LI&date;by cust_no;run;
+data LI&date/*(drop=i q y z YEAR_AFTER_LAST_PAY YEAR_AFTER_PAID_OFF knsai_ymd znkai_nkn_ymd sky_stat_kbn sk_wki_um mcs_wki_um fd00530_um Elig IRRL_sum)*/;
+merge LI&date(in=li) KABARAI.KABARAI_1010_1309(keep=cust_no YM mstt_kbn Kabarai_MM where=(YM=&date));
+by cust_no;if li;
+
+if GROUP_CODE='PO' then Group_Code1='PO';/*ReCreate Group_code1 var*/
+else if GROUP_CODE='WO_P' then Group_Code1='WO';
+else if GROUP_CODE='WO_UNP' then Group_Code1='WO';
+else if GROUP_CODE='OB' then Group_Code1='OB';
+
+/*IMPORTANT! GROUP_CODE2:
+Must allign Group_Code classification where order is OB,PO,WO in order to conform to SF convetion as of 2013-10-03.
+Thus, any WO_P, are reclassified as PO*/ 
+if GROUP_CODE='WO_P' then Group_Code2='PO';
+else Group_Code2=Group_Code1;
+
+if GROUP_CODE2='OB' and Passed_Bucket='Null' then Book='OB_Null';/*Create Book var*/
+else if GROUP_CODE2='OB' then Book='OB';
+else if GROUP_CODE2='PO' and Passed_Bucket='Null' then Book='PO_Null';
+else if GROUP_CODE2='PO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then Book='PO10Y';
+else if GROUP_CODE2='PO' and Passed_Bucket='12<=Year' then Book='PO12Y';
+else if GROUP_CODE2='PO' then Book='PO';
+else if Group_Code2='WO' and Passed_Bucket='Null' then Book='WO_Null';
+else if GROUP_CODE2='WO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then Book='WO10Y';
+else if GROUP_CODE2='WO' and Passed_Bucket='12<=Year' then Book='WO12Y';
+else if GROUP_CODE2='WO' then Book='WO';
+
+if Irrl_Flag='+' or Irrl_Flag='0' then IRRL_PM='IRRL>=0';/*Create consolidated IRRL var*/
+else if Irrl_Flag='-' then IRRL_PM='IRRL<0';
+
+if Kabarai_MM=. then HRKM_flag='N'; else HRKM_flag='Y';
+
+/*As per Shinki recommendation, set all OB IRRL(+) w/ null MSTT_KBN value to 'NL'*/
+if MSTT_KBN='' and Group_Code='OB' and IRRL_PM='IRRL>=0' then MSTT_KBN_adj='NL';
+else MSTT_KBN_adj=MSTT_KBN;
+
+Year=substr(put(YM,6.),1,4);
+IRRL_MM=IRRL_Sum/1000000;format IRRL_MM comma12.3;
+ZNDK_Bal_MM=ZNDK_GNGK_mae/1000000;format IRRL_MM comma12.3;
+Gengaku_MM=Gengaku/1000000;format IRRL_MM comma12.3;
+run;
+
+proc sql;/*reorder, sort variables and create compact file for consolidation and export*/
+create table LI_O&date as
+select 	Year,YM,cust_no,syohn_grp,ac_scr,Group_Code,Group_Code2,Passed_Bucket,Book,
+		ZNDK_LAST,Nyukin_GNGK_mae,ZNDK_GNGK_mae,GNKN_CUT_GK,Nyukin_GNGK_ato,ZNDK_Current,Gengaku,ZNDK_Bal_MM,Gengaku_MM,
+		IRRL_MM,Irrl_Flag,IRRL_PM,Kabarai_MM,MSTT_KBN,MSTT_KBN_adj,LI_Type,HRKM_Flag
+from LI&date
+order by YM, cust_no;quit;
+%end;
+%mend wakai;
+
+%wakai
+
+
+
+
+
+
+/*Step 4: Combine all LI files into one for csv output ALL ELAPSED YRS OUTPUT*/
+data LI;
+set 
+WORK.LI201210 WORK.LI201211 WORK.LI201212 WORK.LI201301 WORK.LI201302 
+WORK.LI201303 WORK.LI201304 WORK.LI201305 WORK.LI201306 WORK.LI201307 
+WORK.LI201308 WORK.LI201309
+;run;
+	
+data LI;
+set LI_O201210 LI_O201211 LI_O201212 LI_O201301 LI_O201302 LI_O201303 
+	LI_O201304 LI_O201305 LI_O201306 LI_O201307 LI_O201308 LI_O201309;run;
+	
+proc sort data=LI;by YM cust_no;run;
+
+proc export data=LI 
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\LI.csv" 
+dbms=csv replace;run;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*Step 5: create subtotaled file for IRRL unit price analysis*/
+proc sql;
+create table mikeisan.IRRL_tanka_1010_1309 as
+select 	YM,syohn_grp,ac_scr,Group_Code2,HRKM_flag,Passed_Bucket,Irrl_Flag,
+		count(cust_no) as CNT,sum(ZNDK_GNGK_mae)/1000000 as ZNDK_Bal_MM,sum(Gengaku)/1000000 as Gengaku_MM,sum(IRRL_MM) as IRRL_MM,sum(Kabarai_MM) as Kabarai_MM
+from mikeisan.LI_201010_201309
+group by YM,syohn_grp,ac_scr,Group_Code2,HRKM_flag,Passed_Bucket,Irrl_Flag;quit;
+
+/*must sort data and then remove duplicate elapsed yr. records with no data*/
+proc sort data=mikeisan.IRRL_tanka_1010_1309;by YM syohn_grp ac_scr Group_Code2 HRKM_flag Passed_Bucket Irrl_Flag;run;
+data mikeisan.IRRL_tanka_1010_1309;
+set mikeisan.IRRL_tanka_1010_1309;
+by YM syohn_grp ac_scr Group_Code2 HRKM_flag Passed_Bucket Irrl_Flag;
+*First=first.Irrl_Flag;
+if first.Irrl_Flag=0 then delete;run;
+
+proc sql;
+create table mikeisan.IRRL_tanka_1010_1309 as
+select substr(put(YM,6.),1,4) as Year/*ReCreate Year var*/,YM,syohn_grp,ac_scr,Group_Code2,HRKM_flag,Passed_Bucket,case /*ReCreate Book var*/
+	when GROUP_CODE2='OB' and Passed_Bucket='Null' then 'OB_Null'
+	when GROUP_CODE2='OB' then 'OB'
+	when GROUP_CODE2='PO' and Passed_Bucket='Null' then 'PO_Null'
+	when GROUP_CODE2='PO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'PO10Y'
+	when GROUP_CODE2='PO' and Passed_Bucket='12<=Year' then 'PO12Y'
+	when GROUP_CODE2='PO' then 'PO'
+	when Group_Code2='WO' and Passed_Bucket='Null' then 'WO_Null'
+	when GROUP_CODE2='WO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'WO10Y'
+	when GROUP_CODE2='WO' and Passed_Bucket='12<=Year' then 'WO12Y'
+	when GROUP_CODE2='WO' then 'WO' end as Book,
+Irrl_Flag,case /*ReCreate IRRL_PM var*/
+	when Irrl_Flag='+' or Irrl_Flag='0' then 'IRRL>=0'
+	when Irrl_Flag='-' then 'IRRL<0' end as IRRL_PM,
+	CNT,ZNDK_Bal_MM,Gengaku_MM,IRRL_MM,Kabarai_MM
+from mikeisan.IRRL_tanka_1010_1309;quit;
+
+proc export data=mikeisan.IRRL_tanka_1010_1309 
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\saiken\mikeisan\IRRL_tanka_1010_1309.csv" 
+dbms=csv replace;run;
+
+/*Step 6: create subtotaled file for L/NL analysis*/
+proc sql;
+create table mikeisan.L_NL_201010_201309 as
+select 	YM,syohn_grp,ac_scr,Group_Code2,HRKM_flag,MSTT_KBN_adj,Passed_Bucket,Irrl_Flag,
+		count(cust_no) as CNT,sum(ZNDK_GNGK_mae)/1000000 as ZNDK_Bal_MM,sum(Gengaku)/1000000 as Gengaku_MM,sum(IRRL_MM) as IRRL_MM,sum(Kabarai_MM) as Kabarai_MM
+from mikeisan.LI_201010_201309
+group by YM,syohn_grp,ac_scr,Group_Code2,HRKM_flag,MSTT_KBN_adj,Passed_Bucket,Irrl_Flag;quit;
+
+/*must sort data and then remove duplicate elapsed yr. records with no data*/
+proc sort data=mikeisan.L_NL_201010_201309;by YM syohn_grp ac_scr Group_Code2 HRKM_flag MSTT_KBN_adj Passed_Bucket Irrl_Flag;run;
+data mikeisan.L_NL_201010_201309;
+set mikeisan.L_NL_201010_201309;
+by YM syohn_grp ac_scr Group_Code2 HRKM_flag MSTT_KBN_adj Passed_Bucket Irrl_Flag;
+*First=first.Irrl_Flag;
+if first.Irrl_Flag=0 then delete;run;
+
+proc sql;
+create table MIKEISAN.L_NL_201010_201309 as
+select substr(put(YM,6.),1,4) as Year/*ReCreate Year var*/,YM,syohn_grp,ac_scr,Group_Code2,HRKM_flag,Passed_Bucket,case /*ReCreate Book var*/
+	when GROUP_CODE2='OB' and Passed_Bucket='Null' then 'OB_Null'
+	when GROUP_CODE2='OB' then 'OB'
+	when GROUP_CODE2='PO' and Passed_Bucket='Null' then 'PO_Null'
+	when GROUP_CODE2='PO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'PO10Y'
+	when GROUP_CODE2='PO' and Passed_Bucket='12<=Year' then 'PO12Y'
+	when GROUP_CODE2='PO' then 'PO'
+	when Group_Code2='WO' and Passed_Bucket='Null' then 'WO_Null'
+	when GROUP_CODE2='WO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'WO10Y'
+	when GROUP_CODE2='WO' and Passed_Bucket='12<=Year' then 'WO12Y'
+	when GROUP_CODE2='WO' then 'WO' end as Book,
+Irrl_Flag,case /*ReCreate IRRL_PM var*/
+	when Irrl_Flag='+' or Irrl_Flag='0' then 'IRRL>=0'
+	when Irrl_Flag='-' then 'IRRL<0' end as IRRL_PM,
+MSTT_KBN_adj,CNT,ZNDK_Bal_MM,Gengaku_MM,IRRL_MM,Kabarai_MM
+from MIKEISAN.L_NL_201010_201309;quit;
+
+proc export data=mikeisan.L_NL_201010_201309 
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\saiken\mikeisan\L_NL_1010_1309.csv" 
+dbms=csv replace;run;
+/**/
+
+
+/*PTSK--Kabarai*/
+/*MUST REASSIGN CREATED DATASETS TO DESIRED LIBRARY BEFORE EXECUTING*/
+
+/*Step 1:Current Data 迴ｾ陦後ョ繝ｼ繧ｿ*/
+/*荳玖ｨ倥・繝輔ぃ繧､繝ｫ縺ｯ1204縺九ｉ蟋九∪繧翫∬､・焚縺ｮ縲桑abarai&ReductionAmount縲阪°繧臥ｵ仙粋縺励◆繧ゅ・縺ｧ縺吶・
+Below infile is a combination of several 6.Kabarai&ReductionAmount files covering differnt periods beginning at 1204*/
+data kabarai_1204_1309(drop=HRKM_KNGK);
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\Kabarai\Kabarai&ReductionAmount_201204-201309.csv' DLM=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input YM :BEST32. CUST_ITRN_NO :BEST32. CUST_NO :BEST32. GROUP_CODE :$20. SYOHN_GRP :$3. AC_SCR :BEST32. ZNDK :COMMA32. HRKM_KNGK :COMMA32. MSTT_KBN :$3.;
+
+if substr(GROUP_CODE,1,1)=2 then do; GROUP_CODE='PO';Group_Code1='PO';end;/*2:譛ｪ蜆溷唆_螳梧ｸ亥し讓ｩ >>PO*/
+else if substr(GROUP_CODE,1,1)=1 then do; GROUP_CODE='WO_P';Group_Code1='WO';end;/*1:蜆溷唆貂・螳梧ｸ亥し讓ｩ >>WO*/
+else if substr(GROUP_CODE,1,1)=3 then do; GROUP_CODE='WO_UNP'; Group_Code1='WO';end;/*3:蜆溷唆貂・譛ｪ螳梧ｸ亥し讓ｩ >>WO*/
+else if substr(GROUP_CODE,1,1)=4 then do; GROUP_CODE='OB';Group_Code1='OB';end;/*4:譛ｪ蜆溷唆_譛ｪ螳梧ｸ亥し讓ｩ >>OB*/
+
+if SYOHN_GRP='NL' then SYOHN_GRP='NLP';
+MSTT_KBN=UPCASE(MSTT_KBN);
+Kabarai_MM=HRKM_KNGK/1000000;format Kabarai_MM comma7.3;
+run;
+
+/*驕主悉繝・・繧ｿOLD DATA START*/ /*Step 2a:*/
+data kabarai_1009_1203(drop=W_Year W_Month YM_temp HRKM_KNGK Exp_CO_Date Wakai_Date where=(YM<201204));/*迴ｾ陦後ョ繝ｼ繧ｿ縺ｮ譛滄俣縺ｨ驥崎､・＠縺ｪ縺・ぜ縲∵律莉倥Ξ繝ｳ繧ｸ繝ｼ繧呈悄髯舌Ｍimit range due to 1204-1303 data overlap*/
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\Kabarai\MCS.csv' delimiter=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input Cust_itrn_no :BEST32. Exp_CO_Date :YYMMDD10. HRKM_KNGK :BEST32. Wakai_Date :YYMMDD10.;
+/*rename 謖ｯ霎ｼ莠亥ｮ壼ｹｴ譛域律 >>> Exp_CO_Date 謌千ｫ句ｹｴ譛域律 >>>Wakai_Date*/
+format Exp_CO_Date YYMMDD10. Wakai_Date YYMMDD10.;
+W_Year=put(year(Wakai_Date),4.);
+W_Month=put(month(Wakai_Date),2.);
+if W_Month IN(1,2,3,4,5,6,7,8,9) then YM_temp=W_Year||'0'||strip(W_Month);
+else YM_temp=W_Year||W_Month;
+YM=input(YM_temp,6.);
+Kabarai_MM=HRKM_KNGK/1000000;format Kabarai_MM comma7.3;
+/*蜥梧匱縺輔ｓ縺ｮ謖・ｰ弱↓繧医ｋ莠碁㍾逋ｻ骭ｲ鬘ｧ螳｢縺ｮ隱ｿ謨ｴ縲繝｡繝ｼ繝ｫ騾壻ｿ｡:2013/08/07*/
+if Cust_itrn_no=93668910 then Cust_itrn_no=93502273;
+if cust_itrn_no=92924533 then Cust_itrn_no=92943686; 
+run;
+
+/*Step 2b: 鬘ｧ螳｢逡ｪ蜿ｷ霑ｽ蜉縲bring in cust_no*/
+proc sort data=kabarai_1009_1203;by cust_itrn_no;run;
+proc sort data=Eligible.w_tsyo_list;by cust_itrn_no;run;
+data kabarai_1009_1203;
+merge kabarai_1009_1203(in=kab) Eligible.w_tsyo_list;
+by cust_itrn_no;if kab;run; /*FYI: 縺薙・繝槭・繧ｸ縺ｧ繝・Η繝ｼ繝励Μ繧ｱ繧､繝医・縺ｪ縺九▲縺溘Ｏo duplicates found on this merge*/
+
+/*Step 2c: bring in prod/score by cust_itrn_no*/
+proc sort data=CUSTNO.MASTER_LIST;by cust_itrn_no;run;
+data kabarai_1009_1203;
+merge kabarai_1009_1203(in=kab) CUSTNO.MASTER_LIST;
+by cust_itrn_no;if kab;
+if SYOHN_GRP='NL' then SYOHN_GRP='NLP';run; /*FYI:  縺薙・繝槭・繧ｸ縺ｧ繝・Η繝ｼ繝励Μ繧ｱ繧､繝医・縺ｪ縺九▲縺溘Ｏo duplicates found on this merge*/
+
+/*Step 3: merge in L/NL 201009-201203 data into KABARAI_1009_1203 file created above from MCS data*/
+/*Original File Name:繧ｭ繝｣繝・す繝･繧｢繧ｦ繝域・邏ｰ_201009-201203.csv provided by Shinki via e-mail 2013/08/06*/
+/*蜈・ヵ繧｡繧､繝ｫ蜷・繧ｭ繝｣繝・す繝･繧｢繧ｦ繝域・邏ｰ_201009-201203.csv縺ｯ繝｡繝ｼ繝ｫ縺ｧ2013/08/06縺ｫ謠蝉ｾ帙・/
+data Kabarai_1009_1203_L_NL;
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\Kabarai\L-NL_at_Kabarai_201009-201203.csv' DLM=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input CUST_NO :BEST32. YM :BEST32. MSTT_KBN :$3.;
+MSTT_KBN=UPCASE(MSTT_KBN);run;
+
+proc sort data=KABARAI_1009_1203;by cust_no;run;
+proc sort data=KABARAI_1009_1203_L_NL;by cust_no;run;
+data KABARAI_1009_1203;
+merge KABARAI_1009_1203(in=kab) KABARAI_1009_1203_L_NL(drop=YM);
+by cust_no;if kab;run;/*FYI: no dups exist in either above merge file,縲so this data step will not create overwrite info or create dup records*/
+/***驕主悉繝・・繧ｿOLD DATA END***/
+
+/*Step 4:迴ｾ陦後ョ繝ｼ繧ｿ縺ｯ驕主悉繝・・繧ｿ縺ｨ繝槭・繧ｸ縺励∽ｸ縺､邨仙粋縺励◆繝輔ぃ繧､繝ｫ繧剃ｽ懈・縲Ｎerge old and new kabarai data to create one consolidated file*/
+data KABARAI_1010_1309;
+set KABARAI_1204_1309 KABARAI_1009_1203(where=(YM>201009));/*驕主悉繝・・繧ｿ縺ｫ201009縺ｮ繝ｬ繧ｳ繝ｼ繝峨・荳崎ｶｳ縺ｮ轤ｺ縲∝ｿｵ縺ｮ縺溘ａ縺ｫ201009縺ｮ繝・・繧ｿ繧貞炎髯､縲・CS data appears to be missing records for 201009, so delete month just in case*/
+run;
+proc sort data=KABARAI.KABARAI_1010_1309;by YM cust_no;run;
+
+
+/*PTSK--SAIKEN*/
+/*MUST REASSIGN CREATED DATASETS TO DESIRED LIBRARY BEFORE EXECUTING*/
+
+%macro SAIKEN;
+%let rdates=201009 201010 201011 201012 201101 201102 201103 201104 201105 201106 201107 201108 201109 201110 201111 201112 201201 201202 201203 201204 201205 201206 201207 201208 201209 201210 201211 201212 201301 201302 201303 201304 201305 201306 201307 201308 201309 ;/*<==don't delete trailing space!*/
+%do j=37 %to 37;
+%let date=		%substr(%str(&rdates),(&j*7-6),6);/*saiken report date*/
+data _null_;
+/*create macro variable that picks last day of month of &date in order to create variable for elapsed time after last pay/pay off*/
+call symput('Run_date',intnx('month',mdy(substr(put(&date,6.),5,2),1,substr(put(&date,6.),1,4)),0,'E'));
+run;
+
+data saiken&date(drop=u v i q y z);
+infile "C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\saiken\mikeisan\saiken_&date..csv" DLM=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input   YM :BEST32. cust_no :BEST32. syohn_grp :$3. ac_scr :BEST32. group_code :$20. zikozn :BEST32. itib_sky_rkgk :BEST32. 
+
+/*201304-201309縺ｮ蛯ｵ讓ｩ繝・・繧ｿ縺ｫyear_after_last_pay縺ｨ year_after_paid_off縺ｮ鬆・分縺碁・ｻ｢縺ｫ縺ｪ縺｣縺溽ぜ縲√％縺ｮ譛滄俣縺ｮ縺ｿ縺ｫ螟画焚縺ｮ鬆・分縺碁・〒縺吶・/
+ /*temporarily switch order due to 201304-201309 variables in reverse order*/
+year_after_last_pay :BEST32. 
+year_after_paid_off :BEST32.
+
+knsai_ymd :BEST32. znkai_nkn_ymd :BEST32. irrl_sum :BEST32. sky_stat_kbn :BEST32. sk_wki_um :BEST32.
+		mcs_wki_um :BEST32. del_kbn :BEST32. fd00530_um :BEST32.;
+Year=substr(put(YM,6.),1,4);
+
+if substr(GROUP_CODE,1,1)=2 then do; GROUP_CODE='PO';Group_Code1='PO';end;/*2:譛ｪ蜆溷唆_螳梧ｸ亥し讓ｩ >>PO*/
+else if substr(GROUP_CODE,1,1)=1 then do; GROUP_CODE='WO_P';Group_Code1='WO';end;/*1:蜆溷唆貂・螳梧ｸ亥し讓ｩ >>WO*/
+else if substr(GROUP_CODE,1,1)=3 then do; GROUP_CODE='WO_UNP'; Group_Code1='WO';end;/*3:蜆溷唆貂・譛ｪ螳梧ｸ亥し讓ｩ >>WO*/
+else if substr(GROUP_CODE,1,1)=4 then do; GROUP_CODE='OB';Group_Code1='OB';end;/*4:譛ｪ蜆溷唆_譛ｪ螳梧ｸ亥し讓ｩ >>OB*/
+
+if SYOHN_GRP='NL' then SYOHN_GRP='NLP';
+
+/*12蟷ｴ縺ｾ縺ｧ縺ｮ邨碁℃蟷ｴ謨ｰ繧定ｿｽ蜉縺吶ｋ轤ｺ縲∫ｵ碁℃蟷ｴ謨ｰ縺ｮ螟画焚繧貞・迴ｾ縲・/
+/*Recreate yr. elapsed after last transaction in order to add 2yr buffer beyond 10yrs*/
+PO_Date=mdy(substr(put(knsai_ymd,8.),5,2),substr(put(knsai_ymd,8.),7,2),substr(put(knsai_ymd,8.),1,4));
+LastP_Date=mdy(substr(put(znkai_nkn_ymd,8.),5,2),substr(put(znkai_nkn_ymd,8.),7,2),substr(put(znkai_nkn_ymd,8.),1,4));
+format LastP_Date yymmdd8.0 PO_Date yymmdd8.0;
+
+if year_after_paid_off=99 then PO=99;/*繧ｷ繝ｳ繧ｭ縺ｫ繧医ｊ蛻､譏弱＆繧後◆縲・9縲阪・謨ｰ蛟､繧剃ｿ昴▽縲・//*preserve "null" values created by Shinki for accounts w/o sufficient info to determine accurate LP/PO dates*/
+else PO=yrdif(PO_Date,&Run_date,'actual');/*螳梧ｸ域律蠕後・邨碁℃蟷ｴ謨ｰ縺ｮ繝・せ繝亥､画焚繧剃ｽ懈・*//*Create test variable for elapsed time from payoff w/ decimal places*/
+if year_after_last_pay=99 then LP=99;
+else LP=yrdif(LastP_Date,&Run_date,'actual');/*譛邨ょ・驥第律蠕後・邨碁℃蟷ｴ謨ｰ縺ｮ繝・せ繝亥､画焚繧剃ｽ懈・*//*Create test variable for elapsed time from last pay w/ decimal places*/
+if PO^=99 and knsai_ymd=znkai_nkn_ymd then LP=PO;
+
+do u=1 to 12;
+if LP>=u and LP<(u+1) then LastPay_Yr=u+1;end;/*LP縺ｮ蝓ｺ縺ｫ繧ｷ繝ｳ繧ｭ縺ｮ"YEAR_AFTER_LAST_PAY"繧貞・迴ｾ縲・*//*Recreate SK's "YEAR_AFTER_LAST_PAY" as LasPay_Yr based on LP test variable*/
+if LP<1 then LastPay_Yr=1;
+if LP>=12 and LP<99 then LastPay_Yr=13;
+if LP=99 then LastPay_Yr=99;
+
+do v=1 to 12;
+if PO>=v and PayOff_Yr<(v+1) then PayOff_Yr=v+1;end;/*PO縺ｮ蝓ｺ縺ｫ繧ｷ繝ｳ繧ｭ縺ｮ"YEAR_AFTER_PAID_OFF" 繧貞・迴ｾ縲・//*Recreate SK's "YEAR_AFTER_PAID_OFF" as PayOff_Yr based on PO test variable*/
+if PO<1 then PayOff_Yr=1;
+if PO>=12 and PO<99 then PayOff_Yr=13;
+if PO=99 then PayOff_Yr=99;
+
+Length Passed_Bucket $14;/*Passed_Bucket縺ｮ螟画焚繧剃ｽ懈・縲・//*Create Passed_Bucket variable*/
+if LastPay_Yr=99 then LastPay_Yr=14;/*荳玖ｨ倥・DO LOOP繧貞ｮ溯｡後☆繧狗ぜ縲∽ｻｮ縺ｫ繝後Ν螟画焚繧・99' 竊・'14'縺ｫRENAME*//*temporarily rename null value of '99' to '14' in order to run below DO LOOPs*/
+if PayOff_Yr=99 then PayOff_Yr=14;
+
+if GROUP_CODE='OB' then do;do i=1 to 14;
+	if LastPay_Yr=i then Passed_Bucket=strip(put((i-1),2.))||'<=Year<'||strip(put(i,2.));end;end;
+if GROUP_CODE='PO' then do;do q=1 to 14;
+	if PayOff_Yr=q then Passed_Bucket=strip(put((q-1),2.))||'<=Year<'||strip(put(q,2.));end;end;
+if GROUP_CODE='WO_UNP' then do;do y=1 to 14;
+	if LastPay_Yr=y then Passed_Bucket=strip(put((y-1),2.))||'<=Year<'||strip(put(y,2.));end;end;
+if GROUP_CODE='WO_P' then do;do z=1 to 14;
+	if PayOff_Yr=z then Passed_Bucket=strip(put((z-1),2.))||'<=Year<'||strip(put(z,2.));end;end;
+
+if LastPay_Yr=14 then LastPay_Yr=99;/*縲繝後Ν螟画焚繧・14'竊・99'縺ｫ謌ｻ縺吶・//*Reassign null value of '99' to replace '14' now that DO LOOPs completed*/
+if PayOff_Yr=14 then PayOff_Yr=99;
+if Passed_Bucket='12<=Year<13' then Passed_Bucket='12<=Year';
+if Passed_Bucket='13<=Year<14' then Passed_Bucket='Null';
+
+if fd00530_um=0 and mcs_wki_um=0 and sk_wki_um=0 and group_code^='' then Elig='Y';else Elig='N';/*髯､螟門ｯｾ雎｡*/
+
+if irrl_sum<0 then Irrl_Flag='-';/*Create IRRL flag variable*/
+else if irrl_sum=0 then Irrl_Flag='0';
+else if irrl_sum>0 then Irrl_Flag='+';
+else Irrl_Flag='N';
+
+if Irrl_Flag='+' or Irrl_Flag='0' then IRRL_PM='IRRL>=0';/*Create consolidated IRRL variable*/
+else if Irrl_Flag='-' then IRRL_PM='IRRL<0';
+
+/*豕ｨ諢・ Create GROUP_CODE2:SF縺ｮ蝓ｺ貅悶↓蜷医ｏ縺帙ｋ轤ｺ縲仝O_P縺ｮ蛯ｵ讓ｩ繧単O縺ｫ螟画峩縲・013-10-03.*/ 
+/*IMPORTANT! Create GROUP_CODE2:
+Must allign Group_Code classification where order is OB,PO,WO in order to conform to SF convetion as of 2013-10-03.
+Thus, any WO_P, are reclassified as PO*/ 
+if Group_Code='WO_P' then Group_Code2='PO';
+else Group_Code2=Group_Code1;
+run;
+
+/*蜷・怦蛯ｵ讓ｩELIGIBLE縺ｮ髮・ｨ医ヵ繧｡繧､繝ｫ繧貞・蜉帙・//*create subtotaled saiken file in preparation for the creation of a consolidated eligible cust_no file*/
+proc sql;
+create table Elig_&date  as
+select Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket,Irrl_Flag,count(cust_no) as CNT,sum(Irrl_sum)/1000000 as IRRL_MM format comma12.3 
+from saiken&date(where=(Elig='Y'))
+group by Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket,Irrl_Flag
+order by Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket,Irrl_Flag;quit;
+
+/*ELIGIBLE縺ｮ髮・ｨ医ヵ繧｡繧､繝ｫ縺ｫBOOK螟画焚繧剃ｽ懈・縲！RRL_PM繧貞・迴ｾ縲〉eorder and sort*//*create/recreate variables for subtotaled saiken data 'eligible' file,reoder and sort*/
+proc sql;
+create table Elig_&date as
+select Year, YM, syohn_grp, ac_scr, Group_Code2, Passed_Bucket, case /*Book螟画焚繧剃ｽ懈・*//*Create Book var*/
+	when GROUP_CODE2='OB' and Passed_Bucket='Null' then 'OB_Null'
+	when GROUP_CODE2='OB' then 'OB'
+	when GROUP_CODE2='PO' and Passed_Bucket='Null' then 'PO_Null'
+	when GROUP_CODE2='PO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'PO10Y'
+	when GROUP_CODE2='PO' and Passed_Bucket='12<=Year' then 'PO12Y'
+	when GROUP_CODE2='PO' then 'PO'
+	when Group_Code2='WO' and Passed_Bucket='Null' then 'WO_Null'
+	when GROUP_CODE2='WO' and (Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12') then 'WO10Y'
+	when GROUP_CODE2='WO' and Passed_Bucket='12<=Year' then 'WO12Y'
+	when GROUP_CODE2='WO' then 'WO' end as Book, CNT, Irrl_Flag, case
+	when Irrl_Flag='+' or Irrl_Flag='0' then 'IRRL>=0'/*IRRL_PM繧貞・迴ｾ*//*Recreate consolidated IRRL var*/
+	when Irrl_Flag='-' then 'IRRL<0' end as IRRL_PM,IRRL_MM
+from Elig_&date
+order by Year,YM,syohn_grp,ac_scr,Group_Code2,Passed_Bucket;quit;
+%end;
+%mend SAIKEN;
+
+%SAIKEN
+
+
+/*combine monthly file to consolidated outpute file*/
+data mikeisan.Elig_201009_201309;
+set mikeisan.EO201009 mikeisan.EO201010 mikeisan.EO201011 mikeisan.EO201012 mikeisan.EO201101 mikeisan.EO201102 mikeisan.EO201103 mikeisan.EO201104 mikeisan.EO201105 
+	mikeisan.EO201106 mikeisan.EO201107 mikeisan.EO201108 mikeisan.EO201109 mikeisan.EO201110 mikeisan.EO201111 mikeisan.EO201112 mikeisan.EO201201 mikeisan.EO201202 
+	mikeisan.EO201203 mikeisan.EO201204 mikeisan.EO201205 mikeisan.EO201206 mikeisan.EO201207 mikeisan.EO201208 mikeisan.EO201209 mikeisan.EO201210 mikeisan.EO201211 
+	mikeisan.EO201212 mikeisan.EO201301 mikeisan.EO201302 mikeisan.EO201303 MIKEISAN.EO201304 MIKEISAN.EO201305 MIKEISAN.EO201306 MIKEISAN.EO201307 MIKEISAN.EO201308 
+	MIKEISAN.EO201309;run;
+
+proc export data=mikeisan.ELIG_201009_201309 
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\saiken\mikeisan\Elig_201009_201309.csv" 
+dbms=csv replace;run;
+
+
+
+proc export data=WORK.ELIG_201306
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\Elig1.csv" 
+dbms=csv replace;run;
+
+
+/*TD tanka_distribution10*/
+/********NLP_ELIG_PO************/
+%let date=201309;
+data bunpu.NLP_E_PO&date(keep=Cust_no Passed_Bucket irrl5_MM rename=(irrl5_MM=irrl_MM));
+set bunpu.SAIKEN&date;
+if Elig='Y' and syohn_grp='NLP' and Group_Code2='PO' and Irrl_Flag1='-';
+*if Passed_Bucket='10<=Year<11' or Passed_Bucket='11<=Year<12' or Passed_Bucket='12<=Year' or Passed_Bucket='Null' then delete;
+IRRL_MM=irrl_sum/1000000;format IRRL_MM comma12.3;
+IRRL5_MM=irrl5_sum/1000000;format IRRL5_MM comma12.3;
+if cust_No=417001879 /*or cust_No=306046535*/ then delete;run;
+proc sort data=bunpu.NLP_E_PO&date;by cust_no;run;
+
+proc means data=bunpu.NLP_E_PO&date Sum mean median min max std skew kurt;
+var irrl_MM;
+class Passed_Bucket;
+output out=bunpu.NLP_E_PO_Stat&date 
+N(Irrl_MM)=Num Sum(Irrl_MM)=Sum Mean(Irrl_MM)=Mean Median(Irrl_MM)=Median Min(Irrl_MM)=Min Max(Irrl_MM)=Max Std(Irrl_MM)=Std Skew(Irrl_MM)=Skew kurt(Irrl_MM)=Kurt;
+run;
+
+data bunpu.NLP_E_PO&date;
+set bunpu.NLP_E_PO&date;
+Length Bin $25;
+if IRRL_MM<=-5 then Bin='21. _IRRL<= -5';
+if IRRL_MM>-5 and IRRL_MM<=-4.75 then Bin='20. _-5 <IRRL<= -4.75';
+if IRRL_MM>-4.75 and IRRL_MM<=-4.5 then Bin='19. _-4.75 <IRRL<= -4.5';
+if IRRL_MM>-4.5 and IRRL_MM<=-4.25 then Bin='18. _-4.5 <IRRL<= -4.25';
+if IRRL_MM>-4.25 and IRRL_MM<=-4 then Bin='17. _-4.25 <IRRL<= -4';
+if IRRL_MM>-4 and IRRL_MM<=-3.75 then Bin='16. _-4 <IRRL<= -3.75';
+if IRRL_MM>-3.75 and IRRL_MM<=-3.5 then Bin='15. _-3.75 <IRRL<= -3.5';
+if IRRL_MM>-3.5 and IRRL_MM<=-3.25 then Bin='14. _-3.5 <IRRL<= -3.25';
+if IRRL_MM>-3.25 and IRRL_MM<=-3 then Bin='13. _-3.25 <IRRL<= -3';
+if IRRL_MM>-3 and IRRL_MM<=-2.75 then Bin='12. _-3 <IRRL<= -2.75';
+if IRRL_MM>-2.75 and IRRL_MM<=-2.5 then Bin='11. _-2.75 <IRRL<= -2.5';
+if IRRL_MM>-2.5 and IRRL_MM<=-2.25 then Bin='10. _-2.5 <IRRL<= -2.25';
+if IRRL_MM>-2.25 and IRRL_MM<=-2 then Bin='9. _-2.25 <IRRL<= -2';
+if IRRL_MM>-2 and IRRL_MM<=-1.75 then Bin='8. _-2 <IRRL<= -1.75';
+if IRRL_MM>-1.75 and IRRL_MM<=-1.5 then Bin='7. _-1.75 <IRRL<= -1.5';
+if IRRL_MM>-1.5 and IRRL_MM<=-1.25 then Bin='6. _-1.5 <IRRL<= -1.25';
+if IRRL_MM>-1.25 and IRRL_MM<=-1 then Bin='5. _-1.25 <IRRL<= -1';
+if IRRL_MM>-1 and IRRL_MM<=-0.75 then Bin='4. _-1 <IRRL<= -0.75';
+if IRRL_MM>-0.75 and IRRL_MM<=-0.5 then Bin='3. _-0.75 <IRRL<= -0.5';
+if IRRL_MM>-0.5 and IRRL_MM<=-0.25 then Bin='2. _-0.5 <IRRL<= -0.25';
+if IRRL_MM>-0.25 and IRRL_MM<=0 then Bin='1. _-0.25 <IRRL<= 0';
+run;
+
+proc sql;
+create table bunpu.NLP_E_PO&date as
+select /*Passed_Bucket,*/Bin,count(Bin) as Count,sum(IRRL_MM) as IRRL_SUM
+from bunpu.NLP_E_PO&date
+group by /*Passed_Bucket,*/ Bin;quit;
+
+data bunpu.NLP_E_PO&date(rename=(Bin1=Bin));
+set bunpu.NLP_E_PO&date;
+_Num=input(scan(bin,1,'.'),8.);
+Bin1=substr(bin,index(bin,'.')+2);
+drop Bin;
+run;
+
+proc sql;
+create table bunpu.NLP_E_PO&date as
+select _Num,Bin,Count,IRRL_SUM
+from bunpu.NLP_E_PO&date
+order by _NUM desc;quit;
+
+proc export data=bunpu.NLP_E_PO&date
+outfile="C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\NLP_E_PO_&date..csv" 
+dbms=csv replace;run;
+/*****************************/
+
+/********NLP_LI_PO************/
+%let date=201009;
+%let date1=%eval(%substr(&date,1,4)+1)%eval(%substr(&date,5,2)+1);
+
+data bunpu.NLP_LI_PO&date(keep=YM Cust_no syohn_grp Group_Code2 Passed_Bucket irrl_MM);
+set saiken2.LI_201010_201309(where=(YM>&date and YM<&date1 and cust_no^=.)); /*if date=201209 then LI from 201210-201309*/
+if syohn_grp='NLP' and Group_Code2='PO';run;
+
+/*align payoff/lastpay data w/ that of eligible as of &date*/
+proc sort data=bunpu.NLP_LI_PO&date;by cust_no;run;
+data bunpu.NLP_LI_PO&date(rename=(PB=Passed_Bucket1 IRRL=IRRL_MM1));/*match Passed_Bucket yr as of Eligible &date with LI from that yr*/
+merge NLP_LI_PO&date(in=LI) saiken2.SAIKEN&date(keep=cust_no Passed_Bucket rename=(Passed_Bucket=PB));
+by Cust_no;if LI;IRRL=irrl/1000000;format IRRL comma12.3;
+*if passed_bucket=PB then Test=0;*else test=1;
+*if IRRL_MM=IRRL then Test1=0;*else test1=1;
+run;
+proc sort data=NLP_LI_PO&date;by test1 YM passed_bucket passed_bucket1;run;
+
+proc means data=bunpu.NLP_LI_PO&date Sum mean median min max std skew kurt;
+var irrl_MM;
+class Passed_Bucket1;
+output out=bunpu.NLP_LI_PO_Stat&date
+N(Irrl_MM)=Num Sum(Irrl_MM)=Sum Mean(Irrl_MM)=Mean Median(Irrl_MM)=Median Min(Irrl_MM)=Min Max(Irrl_MM)=Max Std(Irrl_MM)=Std Skew(Irrl_MM)=Skew kurt(Irrl_MM)=Kurt;
+run;
+/*****************************/
+
+/*COMPARATIVE DATASETS  Vet for Inflow/Outflow*/
+%let start=201009;
+%let fin=%eval(%substr(&start,1,4)+1)%substr(&start,5,2);
+%let first=%substr(&start,3,2);
+%let scnd=%eval(%substr(&start,3,2)+1);
+
+data bunpu.E_&first._&scnd(rename=(IRRL=IRRL_MM));
+merge bunpu.NLP_E_PO&start(in=t1 keep=cust_no) bunpu.NLP_E_PO&fin(keep=cust_no passed_bucket IRRL_MM rename=(IRRL_MM=IRRL));/*use IRRL as dummy var to see where change*/
+by cust_no;if t1;if IRRL=. then delete;drop IRRL_MM;run;
+
+/*subtract out OB>PO addition*//*
+data test;
+merge E_&first._&scnd(in=first) OB_PO_11_12(in=second);
+by cust_no;if first and second=0;run;*/
+
+proc means data=bunpu.E_&first._&scnd Sum mean median min max std skew kurt;
+var irrl_MM;
+class Passed_Bucket;
+output out=bunpu.E_&first._&scnd._Stat
+N(Irrl_MM)=Num Sum(Irrl_MM)=Sum Mean(Irrl_MM)=Mean Median(Irrl_MM)=Median Min(Irrl_MM)=Min Max(Irrl_MM)=Max Std(Irrl_MM)=Std Skew(Irrl_MM)=Skew kurt(Irrl_MM)=Kurt;
+run;
+
+/*PO>OB*/
+data bunpu.NLP_E_OB&fin(keep=Cust_no Passed_Bucket irrl_MM);
+set bunpu.SAIKEN&fin;
+if Elig='Y' and syohn_grp='NLP' and Group_Code2='OB'/* and Irrl_Flag='-'*/;IRRL_MM=irrl_sum/1000000;format IRRL_MM comma12.3;run;
+proc sort data=bunpu.NLP_E_OB&fin;by cust_no;run;
+
+data bunpu.PO_OB_&first._&scnd(rename=(IRRL=IRRL_MM));/*want to know what IRRL was when returned to OB thus take 2011 IRRL*/
+merge bunpu.NLP_E_PO&start(in=t1) bunpu.NLP_E_OB&fin(keep=cust_no IRRL_MM rename=(IRRL_MM=IRRL));/*use IRRL as dummy var to see where change*/
+by cust_no;if t1;if IRRL=. then delete;drop IRRL_MM/*from t1*/;run;
+
+proc means data=PO_OB_&first._&scnd Sum mean median min max std skew kurt;
+var irrl_MM;
+class Passed_Bucket;
+output out=PO_OB_&first._&scnd._Stat
+N(Irrl_MM)=Num Sum(Irrl_MM)=Sum Mean(Irrl_MM)=Mean Median(Irrl_MM)=Median Min(Irrl_MM)=Min Max(Irrl_MM)=Max Std(Irrl_MM)=Std Skew(Irrl_MM)=Skew kurt(Irrl_MM)=Kurt;
+run;
+
+/*OB>PO*/  /*should all be 1st year*/
+data bunpu.NLP_E_OB&start(keep=Cust_no Passed_Bucket irrl_MM);
+set bunpu.SAIKEN&start;
+if Elig='Y' and syohn_grp='NLP' and Group_Code2='OB'/* and Irrl_Flag='-'*/;IRRL_MM=irrl_sum/1000000;format IRRL_MM comma12.3;run;
+proc sort data=bunpu.NLP_E_OB&date;by cust_no;run;
+
+data bunpu.OB_PO_&first._&scnd(drop=IRRL);
+merge bunpu.NLP_E_PO&fin(in=t1) bunpu.NLP_E_OB&start(keep=cust_no IRRL_MM rename=(IRRL_MM=IRRL));/*use IRRL as dummy var to see where change*/
+by cust_no;if t1;if IRRL=. then delete;run;
+
+proc means data=bunpu.OB_PO_&first._&scnd Sum mean median min max std skew kurt;
+var irrl_MM;
+class Passed_Bucket;
+output out=bunpu.OB_PO_&first._&scnd._Stat
+N(Irrl_MM)=Num Sum(Irrl_MM)=Sum Mean(Irrl_MM)=Mean Median(Irrl_MM)=Median Min(Irrl_MM)=Min Max(Irrl_MM)=Max Std(Irrl_MM)=Std Skew(Irrl_MM)=Skew kurt(Irrl_MM)=Kurt;
+run;
+/*********/
+
+/*LI*/
+proc sort data=bunpu.NLP_LI_PO&start;by cust_no;run;
+data bunpu.LI_&first._&scnd(drop=passed_bucket IRRL_MM);
+merge bunpu.NLP_E_PO&start(in=t1) bunpu.NLP_LI_PO&start(keep=cust_no YM IRRL_MM1 Passed_Bucket1 rename=(YM=LI_YM));
+by cust_no;if t1;if LI_YM^=.;run;
+
+/*subtract out OB>PO addition*//*
+data LI_&first._&scnd;
+merge LI_&first._&scnd(in=first) OB_PO_10_11(in=second);
+by cust_no;if first and second=0;run;*/
+
+proc means data=bunpu.LI_&first._&scnd Sum mean median min max std skew kurt;
+var irrl_MM1;
+class Passed_Bucket1;
+output out=bunpu.LI_LI_&first._&scnd._Stat
+N(Irrl_MM1)=Num Sum(Irrl_MM1)=Sum Mean(Irrl_MM1)=Mean Median(Irrl_MM1)=Median Min(Irrl_MM1)=Min Max(Irrl_MM1)=Max Std(Irrl_MM1)=Std Skew(Irrl_MM1)=Skew kurt(Irrl_MM1)=Kurt;
+run;
+
+/*LI OB>PO>LI */
+data LI_&first._&scnd.otra;
+merge NLP_LI_PO&start(in=allLI keep=cust_no YM Passed_Bucket1 rename=(YM=LI_YM)) LI_&first._&scnd(in=vinLI keep=cust_no);
+by cust_no;if allLI and VinLI=0;run;
+
+proc freq data=LI_&first._&scnd.otra;
+table passed_bucket1;run;
+/*********/
+
+
+
+/*REDUX redux_v2*/
+
+/*Step 1:Current data*/
+data Redux.LI_AMT_1204_1303(drop=LAW_NAME LAW_CMPNY LAW_ADR);
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\Redux\LI_AMT_201204-201303.csv' DLM=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input    YM :BEST32.
+CUST_NO :BEST32.
+GROUP_CODE :$30.
+YEAR_AFTER_LAST_PAY :BEST32.
+YEAR_AFTER_PAID_OFF :BEST32.
+AC_SCR :BEST32.
+SYOHN_GRP :$3.
+ZIKOZN :BEST32.
+GNGK_GNKN :COMMA32.
+GNKN_CUT_GK :BEST32.
+ZNDK :COMMA32.
+IRRL_PLUS :BEST32.
+IRRL_MINUS :BEST32.
+LAW_NAME :$27.
+LAW_CMPNY :$34.
+LAW_ADR :$9.;         
+if substr(GROUP_CODE,1,1)=2 then do; GROUP_CODE='PO';Group_Code1='PO';end;
+else if substr(GROUP_CODE,1,1)=1 then do; GROUP_CODE='WO_P';Group_Code1='WO';end;
+else if substr(GROUP_CODE,1,1)=3 then do; GROUP_CODE='WO_UNP'; Group_Code1='WO';end;
+else if substr(GROUP_CODE,1,1)=4 then do; GROUP_CODE='OB';Group_Code1='OB';end;
+if SYOHN_GRP='NL' then SYOHN_GRP='NLP';
+
+Gengaku_MM=(GNGK_GNKN+GNKN_CUT_GK)/1000000;
+Zndk_MM=(Zndk/1000000);
+format Gengaku_MM comma7.3;
+format Zndk_MM comma7.3;run;
+
+/*test*/
+proc freq data=REDUX.REDUX_1204_1303;
+tables YM*Gengaku_MM /nopercent nofreq;run;
+
+/*Step 2:old data*/
+data redux.LI_AMT_1009_1203(rename=(IRRL_positive=IRRL_PLUS IRRL_negative=IRRL_Minus));
+infile 'C:\Documents and Settings\225273\My Documents\GZ Reserve\Shinki\redux\LI_AMT_201009-201203.csv' 
+DLM=',' MISSOVER DSD firstobs=2 LRECL=32760;
+input    YM :BEST32.
+CUST_NO :BEST32.
+GROUP_CODE :$19.
+YEAR_AFTER_LAST_PAY :BEST32.
+YEAR_AFTER_PAID_OFF :BEST32.
+AC_SCR :BEST32.
+SYOHN_GRP :$3.
+ZIKOZN :COMMA32.
+GNGK_GNKN :COMMA32.
+GNKN_CUT_GK :COMMA32.
+ZNDK :COMMA32.
+IRRL_POSITIVE :BEST32.
+IRRL_NEGATIVE :BEST32.;
+if substr(GROUP_CODE,1,1)=2 then do; GROUP_CODE='PO';Group_Code1='PO';end;
+else if substr(GROUP_CODE,1,1)=1 then do; GROUP_CODE='WO_P';Group_Code1='WO';end;
+else if substr(GROUP_CODE,1,1)=3 then do; GROUP_CODE='WO_UNP'; Group_Code1='WO';end;
+else if substr(GROUP_CODE,1,1)=4 then do; GROUP_CODE='OB';Group_Code1='OB';end;
+if SYOHN_GRP='NL' then SYOHN_GRP='NLP';
+
+Gengaku_MM=(GNGK_GNKN+GNKN_CUT_GK)/1000000;
+Zndk_MM=(Zndk/1000000);
+format Gengaku_MM comma7.3;
+format Zndk_MM comma7.3;
+run;
+
+
+/*Step 3:combine old and new*/
+data REDUX.LI_AMT_1009_1303;
+set REDUX.LI_AMT_1009_1203 REDUX.LI_AMT_1204_1303;run;
+
+proc sort data=REDUX.LI_AMT_1009_1303; by YM Cust_no;run;
+
+/*test*/
+proc freq data=REDUX.redux_1009_1303;
+tables YM*GROUP_CODE /nopercent nocol norow;run;
+
+
+/*
