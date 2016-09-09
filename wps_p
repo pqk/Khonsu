@@ -1,0 +1,1118 @@
+/*stat3*/
+
+data MG_1312;
+set PINE_MG.mort_1312;
+if STATUS='SETL' then DELINQUENCY_BUCKET='1';run;
+
+proc means data=MG_1312 n nmiss sum mean std min p1 p10 p25 median p75 p90 p95 p99 max t probt range maxdec=2;
+var 
+TENOR
+TIME_ON_BOOK
+OUTSTANDING_BALANCE
+INTEREST_RATE
+CONTRACTUAL_PAYMENT
+TOTAL_PAYMENT_AMOUNT
+PROPERTY_FLOOR_SPACE_GROSS
+PROPERTY_FLOOR_SPACE_NET
+ORIGINAL_VALUATION
+LOAN_TO_VALUE_ORIGINAL
+LAST_VALUATION
+MARKET_VALUE_PROPERTY_LEVEL;
+*class SUBPRODUCT_GP;
+where STATUS='ACTV';run;
+
+
+TENOR
+TIME_ON_BOOK
+OUTSTANDING_BALANCE
+INTEREST_RATE
+CONTRACTUAL_PAYMENT
+TOTAL_PAYMENT_AMOUNT
+PROPERTY_FLOOR_SPACE_GROSS
+PROPERTY_FLOOR_SPACE_NET
+ORIGINAL_VALUATION
+LOAN_TO_VALUE_ORIGINAL
+LAST_VALUATION
+MARKET_VALUE_PROPERTY_LEVEL;
+
+class SUBPRODUCT_GP PROPERTY_TYPE PROPERTY_USE DELINQUENCY_BUCKET;
+
+
+
+where status='ACTV' and PROPERTY_TYPE='RESIDENTIAL' and DELINQUENCY_BUCKET='A';run;
+where status='SETL' and PROPERTY_TYPE='RESIDENTIAL' and DELINQUENCY_BUCKET='A';run;
+
+
+/*extra code*/
+data testo;
+set &prod..&prod._&date;
+if T_NumVal=0.20 and Loan_Cat='RL' then do;/*M_Book >>will become Sub_Book*/
+	Trx_Type='rl';
+	M_Book='RL';end;
+else if T_NumVal=0.30 and Loan_Cat='OBz-OBz' then do;
+	Trx_Type='ob';
+	M_Book='NA';end;
+else if T_NumVal=0.36 and Loan_Cat='RV' then do;
+	Trx_Type='rv';
+	M_Book='RV';end;
+else if T_NumVal=0.40 and Loan_Cat='NL' then do;
+	Trx_Type='nl';
+	M_Book='NL';end;
+else if T_NumVal=0.50 then do;
+	M_Book='RL';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='RL' then Trx_Type='rl';end;
+else if T_NumVal=0.56 then do;
+	M_Book='OB';
+	if Loan_Cat='RV' then Trx_Type='rv';
+	if Loan_Cat='RL' then Trx_Type='rl';end;
+else if T_NumVal=0.76 then do;
+	M_Book='OB';
+	if Loan_Cat='RV' then Trx_Type='rv';
+	if Loan_Cat='NL' then Trx_Type='nl';end;
+else if T_NumVal=1.00 and Loan_Cat='OB-OB' then do;
+	Trx_Type='ob';
+	M_Book='OB';end;
+else if T_NumVal=1.20 then do;
+	M_Book='OB';
+	if Loan_Cat='RL' then Trx_Type='rl';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=1.30 then do;
+	M_Book='OB';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=1.36 then do;
+	M_Book='RV';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='RV' then Trx_Type='rv';end;	
+else if T_NumVal=1.40 then do;
+	M_Book='OB';
+	if Loan_Cat='NL' then Trx_Type='rl';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=1.50 and Loan_Cat='OB-WO0' then do;
+	Trx_Type='wo';
+	M_Book='WO';end;
+else if T_NumVal=1.60 and Loan_Cat='WO0' then do;
+	Trx_Type='nl';
+	Trx_Type2='wo';
+	M_Book='WO';end;
+else if T_NumVal=2.00 and Loan_Cat='OB-OB' then do;
+	Trx_Type='ob';
+	M_Book='OB';end;
+else if T_NumVal=3.00 and Loan_Cat='RF1' then do;
+	Trx_Type='rl';
+	M_Book='RL';end;
+else if T_NumVal=3.50 and Loan_Cat='OB-PO' then do;
+	Trx_Type='po';
+	M_Book='PO';end;
+else if T_NumVal=3.80 then do;
+	M_Book='OB';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';end;
+else if T_NumVal=4.00 and Loan_Cat='OB-PO-RF' then do;
+	Trx_Type='po';
+	M_Book='PO';end;
+else if T_NumVal=4.30 then do;
+	M_Book='OB';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='RF1' then Trx_Type='rv';end;
+else if T_NumVal=4.50 then do;
+	M_Book='OB';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';end;
+else if T_NumVal=4.70 then do;
+	M_Book='RF';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='NL' then Trx_Type='rf';end;
+else if T_NumVal=4.90 then do;
+	M_Book='OB';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='NL' then Trx_Type='rl';end;
+else if T_NumVal=5.10 then do;
+	M_Book='WO';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='WO0' then do;
+		Trx_Type='rl';
+		Trx_Type2='wo';end;end;
+else if T_NumVal=5.36 then do;
+	M_Book='OB';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RV' then Trx_Type='rv';end;
+else if T_NumVal=5.40 then do;
+	M_Book='PO';
+	if Loan_Cat='RF-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;end;
+else if T_NumVal=5.60 then do;
+	M_Book='WO';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='WO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='wo';end;end;
+else if T_NumVal=6.00 then do;
+	M_Book='PO';
+	if Loan_Cat='NL-PO0' then do;
+		Trx_Type='nl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=6.50 then do;
+	M_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=6.60 then do;
+	M_Book='PO';
+	if Loan_Cat='RL-PO0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=6.70 then do;
+	M_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';
+	if Loan_Cat='RL' then Trx_Type='rl';end;
+else if T_NumVal=6.80 then do;
+	M_Book='RL';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=6.86 then do;
+	M_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';
+	if Loan_Cat='RV' then Trx_Type='rv';end;
+else if T_NumVal=7.00 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=7.30 then do;
+	M_Book='RF';
+	if Loan_Cat='OBz-OBz' then Trx_Type='ob';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=7.36 then do;
+	M_Book='RF';
+	if Loan_Cat='RV' then Trx_Type='rv';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=7.40 then do;
+	M_Book='OB';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';
+	if Loan_Cat='NL' then Trx_Type='rl';end;
+else if T_NumVal=7.50 then do;
+	M_Book='OB';
+	if Loan_Cat='OB-OB' then Trx_Type='ob';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=7.75 then do;
+	M_Book='RF';
+	if Loan_Cat='NL-RF0' then do;
+		Trx_Type='nl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=8.00 then do;
+	M_Book='RL';
+	if Loan_Cat='OB-OB' then Trx_Type='po';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=8.25 then do;
+	M_Book='RF';
+	if Loan_Cat='RL-RF0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=8.90 then do;
+	M_Book='PO';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF-RF0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=9.00 then do;
+	M_Book='RF';
+	if Loan_Cat='NL-PO0' then do;
+		Trx_Type='nl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=9.40 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF-RF0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;end;
+else if T_NumVal=9.60 then do;
+	M_Book='RL';
+	if Loan_Cat='RL-PO0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=10.00 then do;
+	M_Book='RL';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rl';end;
+else if T_NumVal=10.10 then do;
+	M_Book='PO';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RL-P0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;end;
+else if T_NumVal=10.50 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=11.75 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RL-RF0' then do;
+		Trx_Type='rl';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=12.00 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=12.40 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+else if T_NumVal=13.00 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO-RF' then Trx_Type='po';
+	if Loan_Cat='RF1' then Trx_Type='rf';
+	if Loan_Cat='PO0' then do;
+		Trx_Type='rv';
+		Trx_Type2='po';end;end;
+
+else if T_NumVal=13.10 then do;
+	M_Book='RF';
+	if Loan_Cat='OB-PO' then Trx_Type='po';
+	if Loan_Cat='RL-PO0' then do;
+		Trx_Type='rf';
+		Trx_Type2='po';end;
+	if Loan_Cat='RF1' then Trx_Type='rf';end;
+run;
+
+data Trx2(rename=(Trx_Type2=Trx_Type));
+set testo;
+if Trx_Type2^='';
+N=2;run;
+
+data testo(drop=Trx_Type2);
+set testo;
+N=1;run;
+
+data testors;
+merge testo(in=t) Trx2(keep=customer_number T_NumVal M_Book acct N Trx_Type);
+by customer_number acct n;
+If M_Book='OB' or M_Book='NL' or M_Book='RL' or M_Book='RF' or M_Book='RV' then Book1='OB';
+else if M_Book='PO' then Book1='PO';
+else if M_Book='WO' then Book1='WO';
+run;
+
+/*MG_data*/
+
+proc sort data=PINE_MG.mort_1101; by customer_number;run;
+proc sort data=PINE_MG.mort_1312; by customer_number;run;
+
+
+data test;
+merge PINE_MG.mort_1101(keep=CUSTOMER_NUMBER SUBPRODUCT_GP where=(substr(SUBPRODUCT_GP,1,3)='HER')) 
+	PINE_MG.mort_1312(keep=CUSTOMER_NUMBER SUBPRODUCT_GP rename=(SUBPRODUCT_GP=SP1));
+by customer_number;
+run;
+
+proc sort data=test; by SUBPRODUCT_GP;run;
+
+/*new code*/
+data test;
+set &prod..&prod._&date;
+/*Adjust Points based on New Info:Book & Temp_Book*/
+
+/*1*/if NumVal=0.4 and T_NumVal=0.4 then do;
+	if &two=1102 and Book='' then NumVal=NumVal/2;
+	else if Book='' and Temp_Book='RL' then NumVal=NumVal/2;end;
+
+/*9*/else if NumVal=6.0 and T_NumVal=6.0 then do;
+	if &two=1102 and Book='' then NumVal=NumVal*1.1;
+	else if Temp_Book='RL' then NumVal=NumVal*1.1;end;	
+run;
+
+
+data test;
+set &prod..&prod._&date;
+/*Assign Trx Type,Count & book status to each observation*/
+/*1*/if NumVal=0.4 and T_NumVal=0.4 then do;
+	if &two=1102 and Book='' then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='rl';/*NumVal=NumVal/2;*/end;/*>>if becomes necessary to further divided PO0 RF and PO0 NL*/
+	else if Book='' and Temp_Book='RL' then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='rl';/*NumVal=NumVal/2;*/end;/*>>if becomes necessary to further divided PO0 RF and PO0 NL*/
+	else if Book='NL' then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='nl';end;
+/*2*/else if NumVal=1.0 and T_NumVal=1.0 then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='ob';end;
+/*3*/else if (NumVal=0.4 or NumVal=1.0) and T_NumVal=1.4 then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='ob';end;
+	
+	
+	
+	
+	
+/*4*/else if NumVal=1.5 and T_NumVal=1.5 then do;
+	Test_B='WO';
+	TrxCnt1=1;
+	Trx1='wo';end;
+/*5*/else if NumVal=1.0 and T_NumVal=2.0 then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='ob';end;
+/*6*/else if (NumVal=0 or NumVal=3.0) and T_NumVal=3.0 then do;
+	if Loan_Cat='' then do;
+	Test_B='RL';
+	TrxCnt1=.;
+	Trx1='';end;
+	else if Loan_Cat='RF1' then do;
+	Test_B='RL';
+	TrxCnt1=1;
+	Trx1='rl';end;
+/*7*/else if NumVal=3.5 and T_NumVal=3.5 then do;
+	Test_B='PO';
+	TrxCnt1=1;
+	Trx1='po';end;
+/*8*/else if (NumVal=1.0 or NumVal=3.5) and T_NumVal=4.5 then do;
+	if Loan_Cat='OB-OB' then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='ob';end;
+	else if Loan_Cat='OB-PO' then do;
+	Test_B='OB';
+	TrxCnt1=1;
+	Trx1='po';end;
+/*9*/else if NumVal=6.0 and T_NumVal=6.0 then do;
+	if &two=1102 and Book='' then do;
+	Test_B='PO';
+	TrxCnt1=1;
+	Trx1='rl';
+	TrxCnt2=1;
+	Trx2='po';/*NumVal=NumVal*1.1;*/end;/*>>if becomes necessary to further divided PO0 RF and PO0 NL*/
+	else if Temp_Book='RL' then do;
+	Test_B='PO';
+	TrxCnt1=1;
+	Trx1='rl';
+	TrxCnt2=1;
+	Trx2='po';/*NumVal=NumVal*1.1;*/end;/*>>if becomes necessary to further divided PO0 RF and PO0 NL*/
+	else if Book='NL' then do;
+	Test_B='PO';
+	TrxCnt1=1;
+	Trx1='nl';
+	TrxCnt2=1;
+	Trx2='po';end;
+	
+	
+else if 
+TrxCnt1	Trx1	TrxCnt2	Trx2	TotalTrx
+						
+	/*origination data*/
+	proc sql;
+create table PINE_MG.ORIG as
+select CUSTOMER_NUMBER,input(substr(ACCOUNT_NUMBER,5),10.) as ACCT,
+	case
+	when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL'
+	when substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then 'PL' end as Product,
+	case
+	when substr(SUBPRODUCT_GP,1,3)='Her' then 'HER'
+	when substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+	when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Prod_Grp,
+	SUBPRODUCT_GP,substr(ACCOUNT_NUMBER,1,3) as Prod_Type,ACCOUNT_NUMBER,PRODUCT_GP,Application_number,business_mode,
+	case
+	when business_mode='New Loan' then 'NL'
+	when business_mode='Refinance Loan' then 'RF'
+	when business_mode='Repeat Loan' then 'RL'
+	when business_mode='Revolving Review' then 'RV' end as Bus_Mode,application_date,approval_date,
+	activation_date,strip(put(activation_date,yymmn5.)) as ACT_Date,first_due_date, principal_amount as P_AMT, Gross_receivable as Gross_AMT, 
+	count_Guarantor,count_CoBorrower, application_score, behaviour_score, Override_flag, customer_type, Region, date_of_birth, gender, 
+	marital_status,	ID_type, EMPLOYMENT_PERIOD, industry_des, property_status_code, nationality, PROPERTY_OWNER_code, total_income, 
+	used_credit_exposure,DSR, payment_freq, REPAYMENT_METHOD
+from PINE_MG.applist
+order by CUSTOMER_NUMBER,ACCT;
+quit;	
+
+proc freq data=PINE_MG.ORIG;
+tables subproduct_GP / nocol norow nocum nopercent;
+run;
+
+
+/*ONLY UNIQUE DHL w/ oldest app date*/
+proc sql;
+create table PINE_LL.Orig_DHL as
+select *,case
+when business_mode='New Loan' then 'NL'
+when business_mode='Refinance Loan' then 'RF'
+when business_mode='Repeat Loan' then 'RL'
+when business_mode='Revolving Review' then 'RV' end as Bus_Mode
+from PINE_LL.Origination
+where product='DHL'
+order by CUSTOMER_NUMBER,ACCT;quit;
+
+data PINE_LL.Orig_DHL;
+set PINE_LL.Orig_DHL;
+if substr(subproduct_gp,5,3)='Rev' and Bus_Mode^='RV' then Bus_Mode='RV';run;
+
+/*ONLY UNIQUE LL w/ oldest app date*/
+proc sql;
+create table PINE_LL.Orig_LL as
+select *,case
+when business_mode='New Loan' then 'NL'
+when business_mode='Refinance Loan' then 'RF'
+when business_mode='Repeat Loan' then 'RL'
+when business_mode='Revolving Review' then 'RV' end as Bus_Mode
+from PINE_LL.Origination
+where product='PL' 
+order by CUSTOMER_NUMBER,ACCT;quit;
+
+
+
+
+data PINE_LL.Orig_LL ;
+set PINE_LL.Orig_LL ;
+if substr(subproduct_gp,5,3)='Rev' and Bus_Mode^='RV' then Bus_Mode='RV';run;
+
+
+proc sql;
+create table test as
+select customer_number, count(customer_number) as Cnt
+from PINE_LL.ORIG_DHL
+group by customer_number;quit;
+
+
+proc freq data=PINE_PL.origination;
+tables business_mode /norow nocum nocol nopercent;
+run;
+
+
+/*LL*/
+data PL_1312;
+set PINE_LL.pl_1312;
+if (substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL') and LOAN_STATUS='ACTV' and OUTSTANDING_BALANCE>0;
+
+proc sort data=PL_1312; by customer_number acct;run;
+proc sort data=PINE_LL.origination; by customer_number acct;run;
+data PL_1312;
+merge PL_1312(in=pl) PINE_LL.origination(keep=customer_number acct principal_amount);
+by customer_number acct;
+if pl;run;
+
+proc sql;
+create table x as
+select count(CUSTOMER_NUMBER) as Act_Cust,sum(OUTSTANDING_BALANCE)/1000000 as Bal_HKD_MM,sum(principal_amount)/1000000 as PBal_HKD_MM
+from PL_1312;quit;
+
+proc sort data=PL_1312 out=testor;by principal_amount;run;
+
+proc sql;
+create table testor as
+select acct,count(acct) as Count
+from PL_1312
+group by acct
+order by count,acct;quit;
+
+/*DHL*/
+data DHL_1312;
+set PINE_LL.pl_1312;
+if substr(SUBPRODUCT_GP,1,3)='DHL' and LOAN_STATUS='ACTV';
+
+proc sort data=WORK.DHL_1312; by customer_number acct;run;
+data DHL_1312;
+merge DHL_1312(in=dhl) PINE_LL.origination(keep=customer_number acct principal_amount);
+by customer_number acct;
+if dhl;run;
+	
+proc sql;
+create table x as
+select count(CUSTOMER_NUMBER) as Act_Cust,sum(OUTSTANDING_BALANCE)/1000000 as Bal_HKD_MM,sum(principal_amount)/1000000 as PBal_HKD_MM
+from DHL_1312;quit;
+
+proc sql;
+create table testor as
+select Customer_Number,count(CUSTOMER_NUMBER) as Count
+from DHL_1312
+group by Customer_Number
+order by count,customer_number;quit;
+
+/*prelim*/
+proc freq data=PINE_CC.card_1312;
+tables DELINQUENCY_BUCKET*OUTSTANDING_BALANCE /norow nocum nocol nopercent;
+where LOAN_STATUS='ACTIVE';
+run;
+
+proc means data=PINE_CC.card_1312 N SUM MAX MIN MEAN maxdec=0;
+class DELINQUENCY_BUCKET;
+var OUTSTANDING_BALANCE;
+where LOAN_STATUS='ACTIVE';
+format OUTSTANDING_BALANCE comma12.;
+run;
+
+
+/**************LL*****************/
+proc freq data=WORK.PL_1312;
+tables SUBPRODUCT_GP*DELINQUENCY_BUCKET /norow nocum nocol nopercent;
+where /*LOAN_STATUS='ACTV'*/ and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0;
+run;
+
+
+
+proc means data=PINE_LL.ploan_1312 N SUM MAX MIN MEAN maxdec=0;
+var WRITEOFF_AMT;
+where LOAN_STATUS='CHRGO' and substr(SUBPRODUCT_GP,1,3)='DHL';
+run;
+
+
+proc freq data=PINE_LL.ploan_1312;
+tables SUBPRODUCT_GP*DELINQUENCY_BUCKET /norow nocum nocol nopercent;
+where LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0;
+run;
+
+data Hermes;
+set PINE_LL.ploan_1110;
+if substr(SUBPRODUCT_GP,1,3)='Her' and LOAN_STATUS='CHRGO';
+run;
+
+data chargeOFF;
+set PINE_LL.ploan_1312;
+if LOAN_STATUS='CHRGO';
+run;
+data onbook;
+set PINE_LL.ploan_1312;
+if TERM_FLAG='REVOLVING';
+run;
+
+proc sql;
+create table ploan_1312 as
+select count(distinct ACCOUNT_NUMBER) as CNT
+from PINE_LL.ploan_1312
+where LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0
+having cnt;
+quit;
+
+/**************DHL*****************/
+proc freq data=PINE_LL.ploan_1312;
+tables SUBPRODUCT_GP*EARLY_TERMINATION /norow nocum nocol nopercent;
+where /*LOAN_STATUS='ACTV' and*/ substr(SUBPRODUCT_GP,1,3)='DHL' /*and OUTSTANDING_BALANCE>0*/;
+run;
+
+DELINQUENCY_BUCKET
+
+proc means data=PINE_LL.ploan_1312 SUM MEAN maxdec=0;
+var WRITEOFF_AMT;
+class EARLY_TERMINATION;
+where /*LOAN_STATUS='ACTV' and*/ substr(SUBPRODUCT_GP,1,3)='DHL' /*and OUTSTANDING_BALANCE>0*/;
+run;
+
+where LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)='DHL' and OUTSTANDING_BALANCE>0;
+
+
+data DHL_1312;
+set PINE_LL.ploan_1312(where=(LOAN_STATUS='SETL' and substr(SUBPRODUCT_GP,1,3)^='DHL' /*and OUTSTANDING_BALANCE>0*/));
+run;
+data DHL_1311;
+set PINE_LL.ploan_1311(where=(LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)='DHL' and OUTSTANDING_BALANCE>0));
+run;
+
+proc sort data=DHL_1312; by CUSTOMER_NUMBER;run; 
+proc sort data=DHL_1311; by CUSTOMER_NUMBER;run; 
+data test;
+merge DHL_1311(in=f) DHL_1312(in=s);
+by CUSTOMER_NUMBER;
+if s=0;run;
+
+
+/*Code for DATA EXPORT*/
+%macro LL;
+%let yrmo=1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312;
+%do j=1 %to 36;
+%let date=%substr(%str(&yrmo),(&j*5-4),4);
+
+proc sql;
+create table LL_1 as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Cust_Count,sum(OUTSTANDING_BALANCE) as Balance,DELINQUENCY_BUCKET,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,'OB' as Book,'LL' as Product
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('ACTV') and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+
+proc sql;
+create table LL_2 as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Cust_Count,sum(WRITEOFF_AMT) as Balance,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,'WO' as Book,'LL' as Product
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('CHRGO') and substr(SUBPRODUCT_GP,1,3)^='DHL'
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+data LL_&date;
+set LL_1 LL_2;run;
+
+%end;
+%mend LL;
+%ll
+
+%macro DHL;
+%let yrmo=1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312;
+%do j=1 %to 36;
+%let date=%substr(%str(&yrmo),(&j*5-4),4);
+
+proc sql;
+create table LL_1 as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Cust_Count,sum(OUTSTANDING_BALANCE) as Balance,DELINQUENCY_BUCKET,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,'OB' as Book,'DHL' as Product
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('ACTV') and substr(SUBPRODUCT_GP,1,3)='DHL' and OUTSTANDING_BALANCE>0
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+
+proc sql;
+create table LL_2 as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Cust_Count,sum(WRITEOFF_AMT) as Balance,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,'WO' as Book,'DHL' as Product
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('CHRGO') and substr(SUBPRODUCT_GP,1,3)='DHL'
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+data dhl_&date;
+set LL_1 LL_2;run;
+
+%end;
+%mend DHL;
+%dhl
+
+data LL_11_13;
+set 
+WORK.DHL_1101 WORK.DHL_1102 WORK.DHL_1103 WORK.DHL_1104 WORK.DHL_1105 WORK.DHL_1106 WORK.DHL_1107 WORK.DHL_1108 WORK.DHL_1109 WORK.DHL_1110 WORK.DHL_1111 WORK.DHL_1112 WORK.DHL_1201 WORK.DHL_1202 WORK.DHL_1203 WORK.DHL_1204 WORK.DHL_1205 WORK.DHL_1206 WORK.DHL_1207 WORK.DHL_1208 WORK.DHL_1209 WORK.DHL_1210 WORK.DHL_1211 WORK.DHL_1212 WORK.DHL_1301 WORK.DHL_1302 WORK.DHL_1303 WORK.DHL_1304 WORK.DHL_1305 WORK.DHL_1306 WORK.DHL_1307 WORK.DHL_1308 WORK.DHL_1309 WORK.DHL_1310 WORK.DHL_1311 WORK.DHL_1312
+WORK.LL_1101 WORK.LL_1102 WORK.LL_1103 WORK.LL_1104 WORK.LL_1105 WORK.LL_1106 WORK.LL_1107 WORK.LL_1108 WORK.LL_1109 WORK.LL_1110 WORK.LL_1111 WORK.LL_1112 WORK.LL_1201 WORK.LL_1202 WORK.LL_1203 WORK.LL_1204 WORK.LL_1205 WORK.LL_1206 WORK.LL_1207 WORK.LL_1208 WORK.LL_1209 WORK.LL_1210 WORK.LL_1211 WORK.LL_1212 WORK.LL_1301 WORK.LL_1302 WORK.LL_1303 WORK.LL_1304 WORK.LL_1305 WORK.LL_1306 WORK.LL_1307 WORK.LL_1308 WORK.LL_1309 WORK.LL_1310 WORK.LL_1311 WORK.LL_1312;
+run;
+
+proc export data=LL_11_13
+outfile="C:\Documents and Settings\225273\My Documents\Pine\Tape_Data\DHL_11_13.csv" 
+dbms=csv replace;run;
+/****************/
+
+proc sql;
+create table test_1312 as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Cust_Count,sum(OUTSTANDING_BALANCE) as Balance,sum(WRITEOFF_AMT) as WO,DELINQUENCY_BUCKET,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,case
+when sum(OUTSTANDING_BALANCE)>0 then 'OB'
+when sum(OUTSTANDING_BALANCE)=. then 'WO' end as Book
+from PINE_LL.ploan_1312
+where LOAN_STATUS in('ACTV','CHRGO')  and substr(SUBPRODUCT_GP,1,3)='DHL' /*and OUTSTANDING_BALANCE>0*/
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+data test_1312(drop=WO);
+set test_1312;
+if Balance=. then Balance=WO;
+run;
+
+
+
+proc sql;
+create table DHL_&date as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Active_Cust,sum(OUTSTANDING_BALANCE) as Bal_ENR,sum(WRITEOFF_AMT) as WO,DELINQUENCY_BUCKET,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('ACTV','CHRGO')  and substr(SUBPRODUCT_GP,1,3)='DHL' /*and OUTSTANDING_BALANCE>0*/
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+
+
+
+
+
+where LOAN_STATUS in('ACTV','CHRGO')  and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0
+
+
+/*****/
+proc sql;
+create table LL_&date as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,case
+when sum(OUTSTANDING_BALANCE)>0 then count(ACCOUNT_NUMBER)
+when sum(OUTSTANDING_BALANCE)=0 then 0 end as Cust_Count
+
+/*count(ACCOUNT_NUMBER) as Cust_Count*/,sum(OUTSTANDING_BALANCE) as Balance,sum(WRITEOFF_AMT) as WO,DELINQUENCY_BUCKET,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,case
+when sum(OUTSTANDING_BALANCE)>0 then 'OB'
+when sum(OUTSTANDING_BALANCE)=. then 'WO' end as Book
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('ACTV','CHRGO')  and substr(SUBPRODUCT_GP,1,3)^='DHL' /*and OUTSTANDING_BALANCE>0*/
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+data LL_&date(drop=WO);
+set LL_&date;
+if Balance=. then Balance=WO;
+Product='LL';
+run;
+
+proc sql;
+create table DHL_&date as
+select max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,count(ACCOUNT_NUMBER) as Cust_Count,sum(OUTSTANDING_BALANCE) as Balance,sum(WRITEOFF_AMT) as WO,DELINQUENCY_BUCKET,
+mean(INTEREST_RATE) as Ave_Int,min(INTEREST_RATE) as Min_Int,max(INTEREST_RATE) as Max_Int,case
+when sum(OUTSTANDING_BALANCE)>0 then 'OB'
+when sum(OUTSTANDING_BALANCE)=. then 'WO' end as Book
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('ACTV','CHRGO')  and substr(SUBPRODUCT_GP,1,3)='DHL' /*and OUTSTANDING_BALANCE>0*/
+group by LOAN_STATUS,DELINQUENCY_BUCKET
+order by LOAN_STATUS,DELINQUENCY_BUCKET;
+quit;
+data DHL_&date(drop=WO);
+set DHL_&date;
+if Balance=. then Balance=WO;
+Product='DHL';
+run;
+/****/
+
+
+
+proc sql;
+create table test as
+select 
+from DHL_1312 as f left data=DHL_1311 as s on f.DHL_1312=s.DHL_1311
+where 
+
+data test1;
+set WORK.DHL_1312;
+if ACCOUNT_OPEN_DATE>='01dec2013'd;
+run;
+
+and DATE_CLOSE=. 
+or substr(SUBPRODUCT_GP,1,3)='Her'*/
+and DATE_CLOSE=. 
+and DELINQUENCY_BUCKET in ('CAT0','CAT1')
+
+
+
+
+proc means data=PINE_CC.card_1312 N SUM MAX MIN MEAN maxdec=0;
+class DELINQUENCY_BUCKET;
+var OUTSTANDING_BALANCE;
+where LOAN_STATUS='ACTIVE';
+format OUTSTANDING_BALANCE comma12.;
+run;
+
+
+%macro DHL;
+%do i=11 %to 13;
+%let year=&i;
+	%do j=1 %to 1;
+	%let Mo=&j;
+	%let TEST=&year.&mo;
+data testo;
+test=&test;output;
+	%end;
+%end;
+%mend;
+%dhl
+%put _all_;
+
+
+/*prelim_dive*/
+/***ACTIVE***/
+%macro active;
+%let yrmo=1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312;
+%do j=1 %to 36;
+%let date=%substr(%str(&yrmo),(&j*5-4),4);
+
+proc sql;
+create table PL_&date as
+select 
+max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,
+'OB' as Book,case
+when substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Product,case
+when substr(SUBPRODUCT_GP,1,3)='Her' then 'HER'
+when substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Prod_Grp,
+SUBPRODUCT_GP,
+TERM_FLAG,
+CURRENT_PAY_MTD,
+DELINQUENCY_BUCKET,
+PURPOSE_OF_ADVANCE,
+count(ACCOUNT_NUMBER) as Cust_Count,
+mean(TIME_ON_BOOK) as Ave_TIME_OB_Mo,
+min(TIME_ON_BOOK) as MIn_TIME_OB_Mo,
+max(TIME_ON_BOOK) as Max_TIME_OB_Mo,
+mean(TIME_ON_BOOK/12) as Ave_TIME_OB_Yr,
+min(TIME_ON_BOOK/12) as min_TIME_OB_Yr,
+max(TIME_ON_BOOK/12) as max_TIME_OB_Yr,
+mean(TENOR) as Ave_Tenor_Mo,
+min(TENOR) as min_Tenor_Mo,
+max(TENOR) as Max_Tenor_Mo,
+mean(TENOR/12) as Ave_Tenor_Yr,
+min(TENOR/12) as min_Tenor_Yr,
+max(TENOR/12) as max_Tenor_Yr,
+mean(INTEREST_RATE) as Ave_Int,
+min(INTEREST_RATE) as Min_Int,
+max(INTEREST_RATE) as Max_Int,
+sum(OUTSTANDING_BALANCE)/1000000 as Bal_HKD_MM,
+mean(OUTSTANDING_BALANCE)/1000000 as Ave_Bal_HKD_MM,
+min(OUTSTANDING_BALANCE)/1000000 as min_Bal_HKD_MM,
+max(OUTSTANDING_BALANCE)/1000000 as max_Bal_HKD_MM,
+sum(CONTRACTUAL_PAYMENT)/1000000 as Contract_Bal_HKD_MM,
+mean(CONTRACTUAL_PAYMENT)/1000000 as Avg_Contract_Bal_HKD_MM,
+min(CONTRACTUAL_PAYMENT)/1000000 as Min_Contract_Bal_HKD_MM,
+Max(CONTRACTUAL_PAYMENT)/1000000 as Max_Contract_Bal_HKD_MM,
+sum(TOTAL_PAYMENT_AMOUNT)/1000000 as Total_PMT_HKD_MM,
+Total_PMT_HKD_MM/Bal_HKD_MM as Paid_Pct,
+Bal_HKD_MM/Cust_Count as Tanka_HKD_MM
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('ACTV') and OUTSTANDING_BALANCE>0
+group by Product,Prod_Grp,SUBPRODUCT_GP,TERM_FLAG,CURRENT_PAY_MTD,DELINQUENCY_BUCKET,PURPOSE_OF_ADVANCE
+order by Product,Prod_Grp,SUBPRODUCT_GP,TERM_FLAG,CURRENT_PAY_MTD,DELINQUENCY_BUCKET,PURPOSE_OF_ADVANCE;
+quit;
+
+%end;
+%mend active;
+%active
+/**********/
+
+/*****CHRGO SETL*****/
+%macro not_active;
+%let yrmo=1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312;
+%do j=1 %to 36;
+%let date=%substr(%str(&yrmo),(&j*5-4),4);
+
+proc sql;
+create table PL_WO_PO_&date as
+select 
+max(AS_OF_DATE) as AS_OF_DATE format yymmdd10.,case
+when EARLY_TERMINATION='NA ' then 'OB'
+when EARLY_TERMINATION in('DRP SETTLEMENT','EARLY SETTLEMENT','NORMAL SETTLEMENT','REFINANCING SETTLEMENT') then 'PO'
+when EARLY_TERMINATION='WRITE-OFF ' then 'WO' end as Book,case
+when substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Product,case
+when substr(SUBPRODUCT_GP,1,3)='Her' then 'HER'
+when substr(SUBPRODUCT_GP,1,2)='LL' then 'LL'
+when substr(SUBPRODUCT_GP,1,3)='DHL' then 'DHL' end as Prod_Grp,
+SUBPRODUCT_GP,case
+when EARLY_TERMINATION in('DRP SETTLEMENT','EARLY SETTLEMENT','NORMAL SETTLEMENT','REFINANCING SETTLEMENT') then 'SETL'
+when EARLY_TERMINATION='WRITE-OFF ' then 'WO' end as EPO,
+EARLY_TERMINATION,
+TERM_FLAG,
+CURRENT_PAY_MTD,
+FRAUD,
+PURPOSE_OF_ADVANCE,
+count(ACCOUNT_NUMBER) as Cust_Count,
+mean(TIME_ON_BOOK) as Ave_TIME_OB_Mo,
+min(TIME_ON_BOOK) as MIn_TIME_OB_Mo,
+max(TIME_ON_BOOK) as Max_TIME_OB_Mo,
+mean(TIME_ON_BOOK/12) as Ave_TIME_OB_Yr,
+min(TIME_ON_BOOK/12) as min_TIME_OB_Yr,
+max(TIME_ON_BOOK/12) as max_TIME_OB_Yr,
+mean(TENOR) as Ave_Tenor_Mo,
+min(TENOR) as min_Tenor_Mo,
+max(TENOR) as Max_Tenor_Mo,
+mean(TENOR/12) as Ave_Tenor_Yr,
+min(TENOR/12) as min_Tenor_Yr,
+max(TENOR/12) as max_Tenor_Yr,
+mean(INTEREST_RATE) as Ave_Int,
+min(INTEREST_RATE) as Min_Int,
+max(INTEREST_RATE) as Max_Int,
+sum(WRITEOFF_AMT)/1000000 as WO_Bal_HKD_MM,
+mean(WRITEOFF_AMT)/1000000 as Avg_WO_Bal_HKD_MM,
+min(WRITEOFF_AMT)/1000000 as Min_WO_Bal_HKD_MM,
+max(WRITEOFF_AMT)/1000000 as Max_WO_Bal_HKD_MM,
+sum(CONTRACTUAL_PAYMENT)/1000000 as Contract_Bal_HKD_MM,
+sum(CONTRACTUAL_PAYMENT)/1000000 as Contract_Bal_HKD_MM,
+mean(CONTRACTUAL_PAYMENT)/1000000 as Avg_Contract_Bal_HKD_MM,
+min(CONTRACTUAL_PAYMENT)/1000000 as Min_Contract_Bal_HKD_MM,
+Max(CONTRACTUAL_PAYMENT)/1000000 as Max_Contract_Bal_HKD_MM,
+sum(TOTAL_PAYMENT_AMOUNT)/1000000 as Total_PMT_HKD_MM,
+WO_Bal_HKD_MM/Cust_Count as WO_Tanka_HKD_MM
+from PINE_LL.ploan_&date
+where LOAN_STATUS in('CHRGO','SETL')
+group by Book,Product,Prod_Grp,SUBPRODUCT_GP,EPO,EARLY_TERMINATION,TERM_FLAG,CURRENT_PAY_MTD,FRAUD,PURPOSE_OF_ADVANCE
+order by Book,Product,Prod_Grp,SUBPRODUCT_GP,EPO,EARLY_TERMINATION,TERM_FLAG,CURRENT_PAY_MTD,FRAUD,PURPOSE_OF_ADVANCE;
+quit;
+
+%end;
+%mend not_active;
+%not_active
+
+/**********/
+
+
+
+data PL1_11_13;
+set
+WORK.PL_1101 WORK.PL_1102 WORK.PL_1103 WORK.PL_1104 WORK.PL_1105 WORK.PL_1106 WORK.PL_1107 WORK.PL_1108 WORK.PL_1109 WORK.PL_1110 WORK.PL_1111 WORK.PL_1112 WORK.PL_1201 WORK.PL_1202 WORK.PL_1203 WORK.PL_1204 WORK.PL_1205 WORK.PL_1206 WORK.PL_1207 WORK.PL_1208 WORK.PL_1209 WORK.PL_1210 WORK.PL_1211 WORK.PL_1212 WORK.PL_1301 WORK.PL_1302 WORK.PL_1303 WORK.PL_1304 WORK.PL_1305 WORK.PL_1306 WORK.PL_1307 WORK.PL_1308 WORK.PL_1309 WORK.PL_1310 WORK.PL_1311 WORK.PL_1312
+WORK.PL_WO_PO_1101 WORK.PL_WO_PO_1102 WORK.PL_WO_PO_1103 WORK.PL_WO_PO_1104 WORK.PL_WO_PO_1105 WORK.PL_WO_PO_1106 WORK.PL_WO_PO_1107 WORK.PL_WO_PO_1108 WORK.PL_WO_PO_1109 WORK.PL_WO_PO_1110 WORK.PL_WO_PO_1111 WORK.PL_WO_PO_1112 WORK.PL_WO_PO_1201 WORK.PL_WO_PO_1202 WORK.PL_WO_PO_1203 WORK.PL_WO_PO_1204 WORK.PL_WO_PO_1205 WORK.PL_WO_PO_1206 WORK.PL_WO_PO_1207 WORK.PL_WO_PO_1208 WORK.PL_WO_PO_1209 WORK.PL_WO_PO_1210 WORK.PL_WO_PO_1211 WORK.PL_WO_PO_1212 WORK.PL_WO_PO_1301 WORK.PL_WO_PO_1302 WORK.PL_WO_PO_1303 WORK.PL_WO_PO_1304 WORK.PL_WO_PO_1305 WORK.PL_WO_PO_1306 WORK.PL_WO_PO_1307 WORK.PL_WO_PO_1308 WORK.PL_WO_PO_1309 WORK.PL_WO_PO_1310 WORK.PL_WO_PO_1311 WORK.PL_WO_PO_1312;
+run;
+
+proc export data=PL1_11_13
+outfile="C:\Documents and Settings\225273\My Documents\Pine\Tape_Data\PL1_11_13.csv"
+dbms=csv replace;run;
+
+/*stat*/
+data ploan_1312;
+set PINE_LL.ploan_1312;
+if SUBPRODUCT_GP='' then SUBPRODUCT_GP='ALL';
+if substr(SUBPRODUCT_GP,1,3)='DHL' then Product='DHL';
+else if substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then Product='LL';
+if substr(SUBPRODUCT_GP,1,3)='Her' then Prod_Grp='HER';
+else if substr(SUBPRODUCT_GP,1,2)='LL' then Prod_Grp='LL';
+else if substr(SUBPRODUCT_GP,1,3)='DHL' then Prod_Grp='DHL';run;
+
+%let type=WO;
+%macro stat;
+%do a=1 %to 7;
+%let a1=TOTAL_PAYMENT_AMOUNT;
+%let a2=TENOR;
+%let a3=OUTSTANDING_BALANCE;
+%let a4=INTEREST_RATE;
+%let a5=CONTRACTUAL_PAYMENT;
+%let a6=TIME_ON_BOOK;
+%let a7=WRITEOFF_AMT;
+
+proc means data=ploan_1312 n mean p1 p25 Median p75 p90 p95 p99 max;
+var &&a&a;output out=var&a;
+class Prod_Grp;
+where LOAN_STATUS='CHRGO' and substr(SUBPRODUCT_GP,1,3)^='DHL' and Prod_Grp='LL';run;
+
+proc transpose data=var&a out=trans&a;
+var &&a&a;
+by Prod_Grp;
+id _stat_;run;
+data trans&a;
+set trans&a;
+Book='WO';
+if SUBPRODUCT_GP='' then SUBPRODUCT_GP='ALL';
+if substr(SUBPRODUCT_GP,1,3)='DHL' then Product='DHL';
+else if substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then Product='LL';
+else Product='ALL';
+if substr(SUBPRODUCT_GP,1,3)='Her' then Prod_Grp='HER';
+else if substr(SUBPRODUCT_GP,1,2)='LL' then Prod_Grp='LL';
+else if substr(SUBPRODUCT_GP,1,3)='DHL' then Prod_Grp='DHL';
+else Prod_Grp='ALL';run;
+%end;
+%mend stat;
+
+%stat
+
+data PL_&type._1312;
+set WORK.TRANS1 WORK.TRANS2 WORK.TRANS3 WORK.TRANS4 WORK.TRANS5 WORK.TRANS6 WORK.TRANS7;run;
+
+data WORK.PL_WO_1312;
+set WORK.PL_WO_1312;
+Prod_Grp='LL';
+Product='LL';run;
+
+/**OPTIONS***/
+LL
+where LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='SETL' and substr(SUBPRODUCT_GP,1,3)^='DHL';run;
+where LOAN_STATUS='CHRGO' and substr(SUBPRODUCT_GP,1,3)^='DHL';run;
+
+DHL
+where LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)='DHL';run;
+
+HER
+where LOAN_STATUS='OB' and substr(SUBPRODUCT_GP,1,3)^='DHL' and Prod_Grp='HER' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='CHRGO' and substr(SUBPRODUCT_GP,1,3)^='DHL' and Prod_Grp='HER';run;
+
+PL only
+where LOAN_STATUS='ACTV' and substr(SUBPRODUCT_GP,1,3)^='DHL' and OUTSTANDING_BALANCE>0 and Prod_Grp='LL';run;
+/*********/
+
+/***COMBINE ALL*****/
+data LL_Stat_all_1312;
+set WORK.LL_ACT_1312
+WORK.LL_OB_1312 WORK.LL_PO_1312 WORK.LL_WO_1312
+WORK.PL_OB_1312 WORK.PL_PO_1312 WORK.PL_WO_1312
+WORK.HER_OB_1312 WORK.HER_PO_1312 WORK.HER_WO_1312
+WORK.DHL_OB_1312 WORK.DHL_PO_1312 WORK.DHL_WO_1312;run;
+
+proc export data=LL_Stat_all_1312
+outfile="C:\Documents and Settings\225273\My Documents\Pine\Tape_Data\LL_Stat_all_1312.csv"
+dbms=csv replace;run;
+
+
+
+/*stat1*/
+ods noproctitle;
+
+/*GET PRINCIPAL_AMOUNT INTO DHL 13_12 dataset*/
+
+
+
+/****/
+	
+data Stat_1312;
+set PINE_LL.pl_1312;
+if SUBPRODUCT_GP='' then SUBPRODUCT_GP='ALL';
+if substr(SUBPRODUCT_GP,1,3)='DHL' then Product='DHL';
+else if substr(SUBPRODUCT_GP,1,3)='Her' or substr(SUBPRODUCT_GP,1,2)='LL' then Product='LL';
+else Product='ALL';
+if substr(SUBPRODUCT_GP,1,3)='Her' then Prod_Grp='HER';
+else if substr(SUBPRODUCT_GP,1,2)='LL' then Prod_Grp='LL';
+else if substr(SUBPRODUCT_GP,1,3)='DHL' then Prod_Grp='DHL';
+else Prod_Grp='ALL';run;
+
+proc means data=Stat_1312 n nmiss sum mean std min p1 p10 p25 median p75 p90 p95 p99 max t probt range maxdec=2;
+var TENOR TIME_ON_BOOK INTEREST_RATE OUTSTANDING_BALANCE WRITEOFF_AMT CONTRACTUAL_PAYMENT TOTAL_PAYMENT_AMOUNT;
+class Product;
+where LOAN_STATUS='ACTV' and OUTSTANDING_BALANCE>0;
+title;
+run;
+
+
+/*ALL Categories*/
+class Product Prod_Grp SUBPRODUCT_GP;
+where LOAN_STATUS='ACTV' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='CHRGO';run;
+where LOAN_STATUS='SETL';run;
+
+/*only HER*/
+class Product Prod_Grp;
+where LOAN_STATUS='ACTV' and Prod_Grp='HER' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='CHRGO' and Prod_Grp='HER';run;
+where LOAN_STATUS='SETL' and Prod_Grp='HER';run;
+
+/*only LL*/
+class Product Prod_Grp;
+where LOAN_STATUS='ACTV' and Prod_Grp='LL' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='CHRGO' and Prod_Grp='LL';run;
+where LOAN_STATUS='SETL' and Prod_Grp='LL';run;
+
+/*only PL*/
+class Product;
+where LOAN_STATUS='ACTV' and Product='LL' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='CHRGO' and Product='LL';run;
+where LOAN_STATUS='SETL' and Product='LL';run;
+
+/*PL+DHL*/
+class Product;/*omit*/
+where LOAN_STATUS='ACTV' and OUTSTANDING_BALANCE>0;run;
+where LOAN_STATUS='CHRGO';run;
+where LOAN_STATUS='SETL';run;
