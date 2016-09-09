@@ -1,0 +1,880 @@
+%macro a(a=);
+options compress = yes;
+
+/*作業フォルダー名*/
+/*libname a "\\ssmgn2605\CSFSG\029880_Ukai_Tamotsu\GZ Reserve\Shinki\Shinki_&a.\data\meisai";*/
+libname a "\\ssmgn2605\CSFSG\029880_Ukai_Tamotsu\GZ Reserve\Shinki\Shinki_&a.\data\meisai";
+
+/*LI all data クレーム顧客リストの読み込み、保存 <<<<<a.LI_LIST>>>>>*/
+PROC IMPORT OUT= A.fd00530 DATAFILE= "Q:\029880_Ukai_Tamotsu\GZ Reserve\Shinki\Shinki_&a\data\meisai\w_fd00530.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+
+PROC SQL; 
+CREATE TABLE a.LI_LIST AS 
+SELECT DISTINCT t1.YM, t1.SAIM_SYA_CUST_NO 
+FROM a.FD00530 AS t1
+WHERE t1.YM >= 200904 
+ORDER BY t1.YM, t1.SAIM_SYA_CUST_NO; 
+QUIT;
+
+%mend;
+
+/*末年月（＝保存先フォルダー名のyyyymm部分）の指定*/
+%a(a=201211);
+
+
+%macro b();
+options compress = yes;
+libname b "F:\Shinki_meisai\PAYOUT";
+
+/*SK payout data: fixed SK時代の過払い明細表（固定）*/
+PROC IMPORT OUT= b.SK DATAFILE= "F:\Shinki_meisai\PAYOUT\SK.csv" DBMS=CSV REPLACE; GETNAMES=YES; DATAROW=2; RUN;
+
+data b.sk2; 
+set b.sk(rename = (var1 = cust_itrn_no var2 = payment_date var3 = payment_amount var4 = wakai_date)); 
+payment_dt = input(put(payment_date,8.), yymmdd8.);
+wakai_dt = input(put(wakai_date,8.), yymmdd8.);
+FORMAT payment_dt     YYMMDD10. wakai_dt       YYMMDD10. ;
+drop payment_date payment_dt wakai_date;
+run;
+
+/*MCS payout data: need update MCS時代の過払い明細表　シンキより都度更新データを受領して読み込み*/
+PROC IMPORT OUT= b.MCS DATAFILE= "F:\Shinki_meisai\PAYOUT\MCS.csv" DBMS=CSV REPLACE; GETNAMES=YES; DATAROW=2; RUN;
+data b.mcs2; set b.mcs(rename = (var1 = cust_itrn_no var2 = payment_dt var3 = payment_amount var4 = wakai_dt)); 
+drop payment_dt;
+run;
+
+/*GZ int customer list: fixed 旧金利帯顧客リスト＝GZクレームの可能性がある客 <<<<<b.tsyo_list2>>>>>*/
+PROC IMPORT OUT= b.tsyo_list DATAFILE= "F:\Shinki_meisai\PAYOUT\w_tsyo_list.csv" DBMS=CSV REPLACE; GETNAMES=YES; DATAROW=2; RUN;
+data b.tsyo_list2; set b.tsyo_list(rename = (cust_no = saim_sya_cust_no)); run;
+proc sort data = b.tsyo_list2; by cust_itrn_no; run;
+
+/*SK lim to GZ cust*/
+PROC SQL; 
+CREATE TABLE b.SK3 AS 
+SELECT DISTINCT t1.wakai_dt, t2.saim_sya_cust_no, t1.cust_itrn_no, t1.payment_amount
+FROM b.SK2 AS t1 LEFT JOIN b.TSYO_LIST2 AS t2 ON (t1.cust_itrn_no = t2.cust_itrn_no)
+WHERE t1.wakai_dt >= '1Apr2009'd
+ORDER BY t1.wakai_dt, t2.saim_sya_cust_no;
+QUIT;
+
+/*MCS lim to GZ cust*/
+PROC SQL; 
+CREATE TABLE b.MCS3 AS 
+SELECT DISTINCT t1.wakai_dt, t2.saim_sya_cust_no, t1.cust_itrn_no, t1.payment_amount
+FROM b.MCS2 AS t1 LEFT JOIN b.TSYO_LIST2 AS t2 ON (t1.cust_itrn_no = t2.cust_itrn_no)
+ORDER BY t1.wakai_dt, t2.saim_sya_cust_no;
+QUIT;
+
+PROC SQL; 
+CREATE TABLE b.SK_AND_MCS AS 
+SELECT * FROM b.SK3 OUTER UNION CORR SELECT * FROM b.MCS3; Quit;
+
+/*<<<<<b.payoutdata>>>>>過払い統合データ*/
+PROC SQL; 
+CREATE TABLE b.payoutdata AS 
+SELECT DISTINCT(year(t1.wakai_dt)*100+month(t1.wakai_dt)) AS wakai_ym,t1.saim_sya_cust_no, 
+t1.cust_itrn_no, t1.payment_amount
+FROM b.SK_AND_MCS AS t1 ORDER BY wakai_ym, t1.saim_sya_cust_no; QUIT;
+
+PROC EXPORT DATA= B.Payoutdata OUTFILE= "F:\Shinki_meisai\PAYOUT\payoutdata.csv" DBMS=CSV REPLACE; PUTNAMES=YES; RUN;
+%mend;
+
+%b;
+
+
+%macro c(a=);
+options compress = yes;
+libname c "F:\Shinki_meisai\";
+libname d "F:\Shinki_meisai\MCS\";
+libname e "F:\Shinki_meisai\データ出力\";
+
+/*SK時代最終データ<<<<<c.saikn3>>>>>*/
+
+PROC IMPORT OUT= c.saikn DATAFILE= "F:\Shinki_meisai\saikn.csv" DBMS=CSV REPLACE; GETNAMES=YES; DATAROW=2; RUN;
+
+PROC SQL; CREATE TABLE c.SAIKN2 AS 
+SELECT 
+t1.saim_sya_cust_no, 
+t1.saikn_no, 
+t1.sky_stat_kbn, 
+t1.znkai_nkn_ymd, 
+t1.knsai_ymd, 
+t1.ac_scr_frst, 
+t1.syohn_cd, 
+t1.syohn_sykei_tyu FROM c.SAIKN AS t1 ORDER BY t1.saim_sya_cust_no; QUIT;
+
+PROC SQL; CREATE TABLE c.saikn3 AS SELECT DISTINCT t1.saim_sya_cust_no, 
+(MAX(t1.sky_stat_kbn)) FORMAT=BEST1. AS sky_stat_kbn, 
+(MIN(CASE WHEN t1.ac_scr_frst IN (1, 5) THEN 1 ELSE 2 END)) FORMAT=BEST2. AS ac_scr_frst, 
+(MIN(CASE WHEN t1.syohn_sykei_tyu = 110 THEN 1 WHEN t1.syohn_sykei_tyu = 130 THEN 2 ELSE 3 END)) FORMAT=BEST4. AS syohn_sykei_tyu 
+FROM c.SAIKN2 AS t1 GROUP BY t1.saim_sya_cust_no ORDER BY t1.saim_sya_cust_no; QUIT;
+
+
+/*繰り返し回数＝作業タイミングにより調整する*/
+/*data _null_; call symput ('x', intck('month', '30SEP2010'd, today())); run;*/
+data _null_; 
+call symput ('x', intck('month', '30SEP2010'd, '31DEC2012'd)); run;
+
+/*MCS明細データ　読み込み→SAS datasetへ*/
+%do i=1 %to &x.;
+
+data _null_; 
+call symput ('a', put(intnx('month', '31AUG2010'd, &i.), yymmn6.)); 
+run;
+
+%IF %SYSFUNC(EXIST(d.mcs_all_&a.)) = 0 %THEN %DO;
+		data d.mcs_all_&a.;
+
+infile "F:\Shinki_meisai\MCS\s_snk_saikn_rrk_gtmt_&a..csv" firstobs = 2 dlm = ',' dsd missover;
+		input 
+		cust_itrn_no
+		koza_edno
+		sky_stat_kbn
+		syohn_kbn
+		zndk
+		blue_yoin_kbn_1
+		blue_yoin_kbn_2
+		blue_yoin_kbn_3
+		blue_yoin_kbn_4
+		blue_yoin_kbn_5
+		syni_msg_cd_1_1
+		syni_msg_cd_1_2
+		syni_msg_cd_1_3
+		syni_msg_cd_2_1
+		syni_msg_cd_2_2
+		syni_msg_cd_2_3
+		syni_msg_cd_2_4
+		syni_msg_cd_2_5 ;
+		run; 
+	%END;
+	proc sort data = d.mcs_all_&a. out = mcs_all_&a.; by cust_itrn_no; run;
+	/*mcs_allにsaim_sya_cust_noを付与する ワークに展開*/
+	data mcs_all_&a.; 
+		merge mcs_all_&a.(in = a) b.tsyo_list2(in = b); 
+		by cust_itrn_no; 
+		ym = &a.; 
+		/*完全一致のみ*/
+		if a = 1 and b = 1; 
+	run;
+	data li_list_&a.; set a.LI_LIST; if ym = &a.; run;
+	proc sort data = li_list_&a.; by saim_sya_cust_no; run;
+	proc sort data = mcs_all_&a.; by saim_sya_cust_no; run;
+	/*saim_sya_cust_noでli_listにmcs_allをマージ*/
+	data mcs_all_&a.; 
+		merge li_list_&a.(in = a) mcs_all_&a.(in = b); 
+		by saim_sya_cust_no;
+		if a = 1; 
+	run;
+	/*該当なきものは、saikn3（saim_sya_cust_no別にまとめたSK最終データ）データをマージする*/
+	data mcs_all_&a.; 
+		merge mcs_all_&a.(in = a) c.saikn3; 
+		by saim_sya_cust_no;
+		if a = 1; 
+	run;
+
+	%IF %SYSFUNC(EXIST(e.zan_data_&a.)) = 0 %THEN %DO;
+		/*減額ファイル 読み込み→旧金利帯客に絞る*/
+		PROC IMPORT OUT= e.data_output_&a. DATAFILE="F:\Shinki_meisai\データ出力\データ出力_&a..csv" DBMS=CSV REPLACE; GETNAMES=YES; DATAROW=2; RUN;
+		PROC SQL; CREATE TABLE e.ZAN_DATA_&a. AS SELECT DISTINCT 
+		t1.var1 label = 'データ年月', 
+		t2.saim_sya_cust_no LABEL="cust_no", 
+		t1.var2 label = '会員一連番号', 
+		t1.var3 label = '実行残', 
+		t1.var4 label = '減額元金', 
+		t1.var5 label = '元金カット額', 
+		t1.var6 label = '残高'
+		FROM e.data_output_&a. AS t1 LEFT JOIN b.TSYO_LIST2 AS t2 ON (t1.var2 = t2.cust_itrn_no) WHERE t2.saim_sya_cust_no NOT = . 
+		ORDER BY t1.var1, t2.saim_sya_cust_no; QUIT;
+	%end;
+
+%end;
+
+
+/*MCS明細ファイルの全件タイル<<<<<d.mcs_all>>>>>*/
+data d.mcs_all; set 
+%do i=1 %to &x.;
+	mcs_all_%sysfunc(putn(
+		%sysfunc(intnx(month, '31AUG2010'd, &i.)), yymmn6.))
+%end;
+; 
+run;
+
+/*減額ファイルの全件タイル<<<<<e.zan_data>>>>>　ここのプロセス長い　読み込みに時間かかる*/
+data e.zan_data; set 
+%do i=1 %to &x.;
+	e.zan_data_%sysfunc(putn(
+		%sysfunc(intnx(month, '31AUG2010'd, &i.)), yymmn6.))
+%end;
+; 
+run;
+
+
+
+/*MCS_ALLからの集計*/
+
+PROC SQL; CREATE TABLE d.ZNDK_SUM AS SELECT DISTINCT 
+t1.YM, 
+t1.SAIM_SYA_CUST_NO LABEL="cust_no", 
+t1.cust_itrn_no, 
+/* ZNDK */
+(SUM(t1.zndk)) AS ZNDK
+FROM d.mcs_all AS t1 GROUP BY t1.YM, t1.SAIM_SYA_CUST_NO ORDER BY t1.YM, t1.SAIM_SYA_CUST_NO; QUIT;
+
+
+PROC SQL; CREATE TABLE d.SCR_MCS AS SELECT DISTINCT 
+t1.YM, 
+t1.SAIM_SYA_CUST_NO LABEL="cust_no", 
+/* SCR */
+(MIN(t1.ac_scr_frst)) FORMAT=BEST2. AS SCR
+FROM d.mcs_all AS t1 GROUP BY t1.YM, t1.SAIM_SYA_CUST_NO ORDER BY t1.YM, t1.SAIM_SYA_CUST_NO; QUIT;
+
+PROC SQL; CREATE TABLE d.WO_MCS AS SELECT DISTINCT 
+t1.ym, 
+t1.saim_sya_cust_no, 
+/* WO */
+(MAX(t1.sky_stat_kbn)) AS WO
+FROM d.MCS_ALL AS t1 GROUP BY t1.ym, t1.saim_sya_cust_no ORDER BY t1.ym, t1.saim_sya_cust_no; QUIT;
+
+PROC SQL; CREATE TABLE d.P_MCS AS SELECT DISTINCT 
+t1.ym, 
+t1.saim_sya_cust_no, 
+t1.syohn_kbn,
+t1.syuhn_sykei_tyu,
+/* P */
+(CASE 
+WHEN t1.syohn_kbn IN (801, 802, 803, 804, 806, 821, 822, 823, 824, 825, 826, 829, 830, 835, 841, 843, 845) THEN 1
+WHEN t1.syohn_kbn IN (805, 807, 827, 828) THEN 2
+WHEN t1.syohn_kbn IN (819, 849, 820, 850) THEN 4
+ELSE 3
+END) AS P
+FROM d.MCS_ALL AS t1 ORDER BY t1.ym, t1.saim_sya_cust_no; QUIT;
+
+data d.P_mcs2; set d.P_MCS;
+if P = 4 then P = syuhn_sykei_tyu; 
+else if syohn_kbn = . then P = syuhn_sykei_tyu;
+else P = P; run;
+
+PROC SQL; CREATE TABLE d.P_MCS3 AS SELECT DISTINCT 
+t1.ym, 
+t1.saim_sya_cust_no, 
+min(P) as P
+FROM d.P_mcs2 AS t1 GROUP BY t1.ym, t1.saim_sya_cust_no ORDER BY t1.ym, t1.saim_sya_cust_no; QUIT;
+
+/*これもかなり長い*/
+PROC SQL; CREATE TABLE e.ZAN_MCS AS SELECT DISTINCT 
+t1.YM, 
+t1.SAIM_SYA_CUST_NO, 
+t2.var2,
+t1.ZNDK, 
+t2.var3,
+t2.var4,
+t2.var5,
+t2.var6
+FROM d.ZNDK_SUM AS t1 LEFT JOIN e.ZAN_DATA AS t2 ON (t1.YM = t2.var1) AND (t1.SAIM_SYA_CUST_NO = t2.saim_sya_cust_no)
+ORDER BY t1.YM, t1.SAIM_SYA_CUST_NO;
+QUIT;
+
+/*t2 e.zan_data 変数対照表*/
+/*1 VAR1             データ年月*/
+/*2 saim_sya_cust_no cust_no*/
+/*3 VAR2             会員一連番号*/
+/*4 VAR3             実行残*/
+/*5 VAR4             減額元金*/
+/*6 VAR5             元金カット額*/
+/*7 VAR6             残高*/
+
+PROC SQL; CREATE TABLE e.MCS_PRE AS SELECT DISTINCT 
+t1.YM, 
+t1.SAIM_SYA_CUST_NO, 
+t1.var2, 
+t2.WO, 
+t1.ZNDK, 
+t1.var3, 
+t1.var4, 
+t1.var5, 
+t1.var6, 
+t3.P, 
+t4.SCR
+FROM e.ZAN_MCS AS t1 
+LEFT JOIN d.WO_MCS  AS t2 ON (t1.YM = t2.YM) AND (t1.SAIM_SYA_CUST_NO = t2.SAIM_SYA_CUST_NO) 
+LEFT JOIN d.P_MCS   AS t3 ON (t1.YM = t3.YM) AND (t1.SAIM_SYA_CUST_NO = t3.SAIM_SYA_CUST_NO) 
+LEFT JOIN d.SCR_MCS AS t4 ON (t1.YM = t4.YM) AND (t1.SAIM_SYA_CUST_NO = t4.SAIM_SYA_CUST_NO)
+ORDER BY t1.YM, t1.SAIM_SYA_CUST_NO; QUIT;
+
+/*t1 e.ZAN_MCS 変数対照表*/
+/*1  YM               */
+/*2  SAIM_SYA_CUST_NO cust_no*/
+/*3  VAR2             会員一連番号*/
+/*4  ZNDK             */
+/*5  VAR3             実行残*/
+/*6  VAR4             減額元金*/
+/*7  VAR5             元金カット額*/
+/*8  VAR6             残高*/
+
+
+data e.mcs_data; set e.MCS_PRE;
+
+if WO = 2 then OWP = "2.WO"; 
+else if sum(var3) > 0 then OWP = "1.OB";
+else OWP = "3.PO"; 
+
+if P = 1 then PR = "1.NLP";
+else if P = 2 then PR = "2.NLB";
+else PR = "3.OTHER";
+
+if SCR = 1 then SCORE = "A"; 
+else SCORE = "B";
+
+/*derived from mcs_all　マイナスの値が入っている*/
+ZNDK = ZNDK/1000000;
+
+/*derived from 残高明細*/
+var3 = var3/1000000;
+var4 = var4/1000000;
+var5 = var5/1000000;
+var6 = var6/1000000;
+
+/*符号判定ロジックの原則*/
+if var3=0 and sum(var4, var5)>0 then IRRL = "2.-";
+
+/*償却債権は定義上IRRL negative*/
+else if wo = 2 then IRRL = "2.-";
+
+/*ZNDKが欠損の場合＝完済債権？はIRRL negativeを擬制する　LI処理が翌月になるタイミングずれの問題？でうまく符号がつかない*/
+else if ZNDK = . then IRRL = "2.-";
+
+/*マイナスが入っていたらIRRL negativeを擬制する　そうしないとOB negativeの件数が0になってしまう*/
+else if ZNDK < 0 then IRRL = "2.-"; 
+
+else IRRL = "1.+";
+
+drop WO P SCR;
+
+run;
+
+
+/*変数対照表*/
+/*1    YM               */
+/*2    SAIM_SYA_CUST_NO cust_no*/
+/*3    VAR2             会員一連番号*/
+/*4    WO               */
+/*5    ZNDK             */
+/*6    VAR3             実行残*/
+/*7    VAR4             減額元金*/
+/*8    VAR5             元金カット額*/
+/*9    VAR6             残高*/
+/*10    P               */
+/*11    SCR             */
+
+PROC EXPORT DATA= E.Mcs_data OUTFILE= "F:\Shinki_meisai\MCS\mcs_data.csv" DBMS=CSV REPLACE; PUTNAMES=YES; RUN;
+
+/*残高、件数集計*/
+proc summary DATA=E.MCS_DATA(rename = (var6 = zan));
+class ym OWP PR SCORE IRRL;
+var zan;
+output out=E.MCS_DATA_SUM sum(zan)=; run;
+
+data E.MCS_DATA_SUM2; set E.MCS_DATA_SUM; 
+where ym ^= . and OWP ^= " " and PR ^= " " and SCORE ^= " " and IRRL ^= " "; run;
+
+proc sort data = E.MCS_DATA_SUM2; by OWP PR SCORE IRRL; run;
+proc transpose data = E.MCS_DATA_SUM2(rename = (_freq_ = n)) out = E.MCS_DATA_SUM3; 
+var zan n;
+by OWP PR SCORE IRRL;
+id ym;
+run;
+proc sort data = E.MCS_DATA_SUM3(rename = (_name_ = name)); by name; run;
+
+data E.MCS_DATA_SUM4; format name; label name = "zan or n"; 
+set E.MCS_DATA_SUM3; drop _label_; 
+array ym(&x.) _201009 -- _&a.;
+	do i = 1 to &x.;
+	if ym(i) = . then ym(i) = 0;
+	end;
+run;
+
+PROC EXPORT DATA= E.Mcs_data_sum4 OUTFILE= "\\ssmgn2605\CSFSG\029880_Ukai_Tamotsu\GZ Reserve\Shinki\Shinki_&a.\mcs_data_sum.csv" DBMS=CSV REPLACE; PUTNAMES=YES; RUN;
+
+
+%mend;
+%c(a=201211);
+
+
+%macro d(a=);
+/*DB軽量化のために実行する　MCS明細ファイルを過払いデータに限定する*/
+
+/*繰り返し回数＝作業タイミングにより調整する*/
+/*data _null_; call symput ('x', intck('month', '30SEP2010'd, today())); run;*/
+data _null_; call symput ('x', intck('month', '30SEP2010'd, '31DEC2012'd)); run;
+data b.payoutdata_small; set b.payoutdata(keep = cust_itrn_no); run;
+proc sort data = b.payoutdata_small nodupkey; by cust_itrn_no; run;
+
+%do i=1 %to &x.;
+	data _null_; call symput ('a', put(intnx('month', '31AUG2010'd, &i.), yymmn6.)); run;
+	%IF %SYSFUNC(EXIST(d.mcs_all_payout_&a.)) = 0 %THEN %DO;
+		proc sort data = d.mcs_all_&a.; by cust_itrn_no; run;
+		data d.mcs_all_payout_&a.; 
+			merge d.mcs_all_&a.(in = a) b.payoutdata_small(in = b); 
+			by cust_itrn_no; 
+			ym = &a.; 
+			if b = 1; 
+		run;
+	%END;
+%END;
+/*軽量化後MCS明細ファイルの全件タイル<<<<<d.mcs_all_payout>>>>>*/
+data d.mcs_all_payout; set 
+%do i=1 %to &x.;
+	d.mcs_all_payout_%sysfunc(putn(
+		%sysfunc(intnx(month, '31AUG2010'd, &i.)), yymmn6.))
+%end;
+; 
+run;
+
+
+/*wo_mcs_subの作成*/
+PROC SQL; CREATE TABLE d.WO_MCS_SUB AS SELECT DISTINCT 
+t1.saim_sya_cust_no, 
+/* WO */
+(MAX(t1.sky_stat_kbn)) FORMAT=BEST1. AS WO
+FROM c.SAIKN3 AS t1 GROUP BY t1.saim_sya_cust_no ORDER BY t1.saim_sya_cust_no; QUIT;
+/*woステータスのアップデート*/
+
+PROC SQL; CREATE TABLE d.WO_MCS_UPDATED AS SELECT DISTINCT 
+t1.ym, 
+t1.saim_sya_cust_no LABEL="cust_no", 
+/* WO */
+(CASE WHEN t1.WO = . THEN t2.WO ELSE t1.WO END) AS WO
+FROM d.WO_MCS AS t1 INNER JOIN d.WO_MCS_SUB AS t2 ON (t1.saim_sya_cust_no = t2.saim_sya_cust_no)
+ORDER BY t1.ym, t1.saim_sya_cust_no;
+QUIT;
+
+
+
+/*p_mcs_subの作成*/
+PROC SQL; CREATE TABLE d.P_MCS_SUB AS SELECT DISTINCT 
+t1.saim_sya_cust_no, 
+/* P */
+(MIN(CASE WHEN t1.syohn_sykei_tyu = 110 THEN 1 WHEN t1.syohn_sykei_tyu = 130 THEN 2 ELSE 3 END)) FORMAT=BEST4. AS P
+FROM c.SAIKN3 AS t1 GROUP BY t1.saim_sya_cust_no ORDER BY t1.saim_sya_cust_no; QUIT;
+/*productステータスのアップデート*/
+
+PROC SQL; CREATE TABLE d.P_MCS_UPDATED AS SELECT DISTINCT 
+t1.ym, 
+t1.saim_sya_cust_no LABEL="cust_no", 
+/* P */
+(CASE WHEN t1.P = 4 THEN t2.P ELSE t1.P END) AS P
+/*注意：d.p_mcs3使用*/
+FROM d.P_MCS3 AS t1 INNER JOIN d.P_MCS_SUB AS t2 ON (t1.saim_sya_cust_no = t2.saim_sya_cust_no)
+ORDER BY t1.ym, t1.saim_sya_cust_no;
+QUIT;
+
+
+
+/*スコアABの作成*/
+PROC SQL; CREATE TABLE d.SCR1 AS SELECT DISTINCT 
+t1.wakai_ym AS YM, 
+t1.cust_itrn_no, 
+t1.payment_amount, 
+/* SCR */
+t2.SCR
+/*(MIN(CASE WHEN t2.ac_scr_frst IN (1, 5) THEN 1 ELSE 2 END)) AS SCR*/
+/*注：b.payoutdata使用*/
+/*FROM b.payoutdata AS t1 LEFT JOIN c.SAIKN3 AS t2 ON (t1.saim_sya_cust_no = t2.saim_sya_cust_no)*/
+FROM b.payoutdata AS t1 LEFT JOIN d.SCR_MCS AS t2 ON (t1.saim_sya_cust_no = t2.saim_sya_cust_no)
+WHERE t1.wakai_ym >= 201009 GROUP BY t1.wakai_ym, t1.cust_itrn_no ORDER BY t1.wakai_ym, t1.cust_itrn_no; QUIT;
+
+
+/*重複排除*/
+proc sort data = d.scr1; by ym cust_itrn_no SCR; run; 
+proc sort data = d.scr1 nodupkey; by ym cust_itrn_no; run; 
+
+
+
+/*woステータスの作成*/
+PROC SQL; CREATE TABLE d.WO1 AS SELECT DISTINCT 
+t1.ym, 
+t1.cust_itrn_no, 
+/* WO */
+(MAX(t1.sky_stat_kbn)) AS WO
+FROM d.mcs_all AS t1 GROUP BY t1.ym, t1.cust_itrn_no ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+PROC SQL; CREATE TABLE d.WO2 AS SELECT 
+t2.ym, 
+t2.cust_itrn_no, 
+t1.saim_sya_cust_no, 
+t2.WO
+FROM b.payoutdata AS t1 LEFT JOIN d.WO1 AS t2 ON (t1.cust_itrn_no = t2.cust_itrn_no) AND (t1.wakai_ym = t2.ym) 
+WHERE t2.ym >= 201009 ORDER BY t2.ym, t2.cust_itrn_no; QUIT;
+PROC SQL; CREATE TABLE d.WO3 AS SELECT 
+t1.ym, 
+t1.cust_itrn_no, 
+t1.saim_sya_cust_no, 
+/* WO */
+(CASE WHEN t1.WO = . THEN t2.sky_stat_kbn ELSE t1.WO END) AS WO
+FROM d.WO2 AS t1 LEFT JOIN c.SAIKN3 AS t2 ON (t1.saim_sya_cust_no = t2.saim_sya_cust_no) ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+PROC SQL; CREATE TABLE d.WO4 AS SELECT DISTINCT 
+t1.ym, 
+t1.cust_itrn_no, 
+/* WO */
+(MAX(t1.WO)) AS WO
+FROM d.WO3 AS t1 GROUP BY t1.ym, t1.cust_itrn_no ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+/*重複排除*/
+proc sort data = d.wo4; by ym cust_itrn_no descending wo; run; 
+proc sort data = d.wo4 nodupkey; by ym cust_itrn_no; run; 
+
+
+
+
+/*productステータスの作成*/
+PROC SQL; CREATE TABLE d.P1 AS SELECT DISTINCT 
+t1.ym, 
+t1.cust_itrn_no, 
+/* P */
+(MIN(CASE WHEN t1.syohn_kbn IN (801, 802, 803, 804, 806, 821, 822, 823, 824, 825, 826, 829, 830, 835, 841, 843, 845) THEN 1
+WHEN t1.syohn_kbn IN (805, 807, 827, 828) THEN 2
+WHEN t1.syohn_kbn IN (819, 849, 820, 850) THEN 4
+ELSE 3 END)) AS P
+FROM d.mcs_all AS t1 GROUP BY t1.ym, t1.cust_itrn_no ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+PROC SQL; CREATE TABLE d.P2 AS SELECT 
+t3.ym, 
+t3.cust_itrn_no, 
+t1.saim_sya_cust_no, 
+t3.P
+FROM b.payoutdata AS t1 LEFT JOIN d.P1 AS t3 ON (t1.cust_itrn_no = t3.cust_itrn_no) AND (t1.wakai_ym = t3.ym)
+WHERE t3.ym >= 201009 ORDER BY t3.ym, t3.cust_itrn_no; QUIT;
+PROC SQL; CREATE TABLE d.P3 AS SELECT 
+t1.ym, 
+t1.cust_itrn_no, 
+t1.saim_sya_cust_no, 
+t1.P, 
+/* PP */
+(CASE WHEN t2.syohn_sykei_tyu = 110 THEN 1 WHEN t2.syohn_sykei_tyu = 130 THEN 2 ELSE 3 END) FORMAT=BEST4. AS PP
+FROM d.P2 AS t1 LEFT JOIN c.SAIKN3 AS t2 ON (t1.saim_sya_cust_no = t2.saim_sya_cust_no) ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+PROC SQL; CREATE TABLE d.P4 AS SELECT DISTINCT 
+t1.ym, 
+t1.cust_itrn_no, 
+/* P */
+(MIN(CASE WHEN t1.P = 4 THEN t1.PP ELSE t1.P END)) AS P
+FROM d.P3 AS t1 GROUP BY t1.ym, t1.cust_itrn_no ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+/*重複排除*/
+proc sort data = d.p4; by ym cust_itrn_no p; run; 
+proc sort data = d.p4 nodupkey; by ym cust_itrn_no; run; 
+
+
+
+
+/*残高の作成*/
+PROC SQL; CREATE TABLE d.ZNDK1 AS SELECT DISTINCT 
+t1.ym, 
+t1.cust_itrn_no, 
+/* ZNDK_MCS_ALL */
+(SUM(t1.zndk)) AS ZNDK_MCS_ALL
+FROM d.mcs_all AS t1 GROUP BY t1.ym, t1.cust_itrn_no ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+
+PROC SQL; CREATE TABLE d.ZNDK2 AS SELECT 
+t2.ym, 
+t2.cust_itrn_no, 
+t1.saim_sya_cust_no, 
+t2.ZNDK_MCS_ALL
+FROM b.payoutdata AS t1 LEFT JOIN d.ZNDK1 AS t2 ON (t1.cust_itrn_no = t2.cust_itrn_no) AND (t1.wakai_ym = t2.ym)
+WHERE t2.ym >= 201009 ORDER BY t1.wakai_ym, t1.cust_itrn_no; QUIT;
+
+PROC SQL; CREATE TABLE d.ZNDK3 AS SELECT 
+t1.ym, 
+t1.cust_itrn_no, 
+t1.ZNDK_MCS_ALL, 
+t2.var3 AS ZAN, 
+t2.var4 AS REDUCTION, 
+t2.var5 AS PRIN_CUT, 
+t2.var6 AS BAL
+FROM d.ZNDK2 AS t1 LEFT JOIN e.ZAN_DATA AS t2 ON (t1.cust_itrn_no = t2.var2) AND (t1.ym = t2.var1)
+ORDER BY t1.ym, t1.cust_itrn_no; QUIT;
+/*重複排除*/
+proc sort data = d.zndk3; by ym cust_itrn_no descending zan; run; 
+proc sort data = d.zndk3 nodupkey; by ym cust_itrn_no; run; 
+
+
+
+/*1    VAR1                データ年月*/
+/*2    saim_sya_cust_no    cust_no*/
+/*3    VAR2                会員一連番号*/
+/*4    VAR3                実行残*/
+/*5    VAR4                減額元金*/
+/*6    VAR5                元金カット額*/
+/*7    VAR6                残高*/
+
+
+PROC SQL; CREATE TABLE d.ZAN_MCS AS SELECT DISTINCT 
+t1.ym, 
+t1.saim_sya_cust_no, 
+/* ZNDK */
+(SUM(t1.zndk)) FORMAT=BEST9. AS ZAN, 
+/* ZAN */
+(SUM(t2.var3)) FORMAT=BEST9. AS ZNDK, 
+/* reduction */
+(SUM(t2.var4)) FORMAT=BEST7. AS reduction, 
+/* prin_cut */
+(SUM(t2.var5)) FORMAT=BEST8. AS prin_cut, 
+/* BAL */
+(SUM(t2.var6)) FORMAT=BEST9. AS BAL
+FROM d.MCS_ALL AS t1, e.ZAN_DATA AS t2 WHERE (t1.ym = t2.var1 AND t1.cust_itrn_no = t2.var2)
+GROUP BY t1.ym, t1.saim_sya_cust_no ORDER BY t1.ym, t1.saim_sya_cust_no; QUIT;
+
+
+
+
+
+data d.MCS_PAYOUT_DATA; merge d.zndk3 d.wo4 d.p4 d.scr1; by ym cust_itrn_no; 
+
+if wo = 2 then OWP = "2.WO"; else if BAL > 0 then OWP = "1.OB"; else OWP = "3.PO";
+if P = 1 then PROD = "1.NLP"; else if P = 2 then PROD = "2.NLB"; else PROD = "3.OTHER";
+if SCR =1 then SCORE = "A"; else SCORE = "B";
+
+/*ZNDK_MCS_ALL	数値	8			*/
+/*ZAN	数値	8	BEST9.	BEST9.	*/
+/*REDUCTION	数値	8	BEST7.	BEST7.	*/
+/*PRIN_CUT	数値	8	BEST8.	BEST8.	*/
+/*BAL	数値	8	BEST9.	BEST9.	*/
+/*payment_ym	数値	8			*/
+
+payment_amount = payment_amount/1000000*-1;
+run;
+
+
+
+/*payout件数と金額をセグメントごとに集計*/
+proc summary DATA=d.MCS_PAYOUT_DATA;
+class prod SCORE ym OWP;
+var payment_amount;
+output out=d.MCS_PAYOUT_DATA_SUM sum(payment_amount)=; run;
+
+data d.MCS_PAYOUT_DATA_SUM2; set d.MCS_PAYOUT_DATA_SUM; 
+where ym ^= . and OWP ^= " " and PROD ^= " " and SCORE ^= " " ; run;
+
+proc sort data = d.MCS_PAYOUT_DATA_SUM2; by PROD SCORE OWP; run;
+proc transpose data = d.MCS_PAYOUT_DATA_SUM2(rename = (_freq_ = n)) out = d.MCS_PAYOUT_DATA_SUM3; 
+var payment_amount n;
+by PROD SCORE OWP;
+id ym;
+run;
+proc sort data = d.MCS_PAYOUT_DATA_SUM3(rename = (_name_ = name)); by PROD SCORE OWP name; run;
+
+/*%let x = 27;*/
+/*%let a = 201211;*/
+
+data d.MCS_PAYOUT_DATA_SUM4; 
+set d.MCS_PAYOUT_DATA_SUM3;  
+array ym(&x.) _201009 -- _&a.;
+	do i = 1 to &x.;
+	if ym(i) = . then ym(i) = 0;
+	end;
+label name = "zan or n"; 
+drop i;
+run;
+
+PROC EXPORT DATA= d.Mcs_PAYOUT_data_sum4 OUTFILE= "\\ssmgn2605\CSFSG\029880_Ukai_Tamotsu\GZ Reserve\Shinki\Shinki_&a.\mcs_payout_data_sum2.csv" DBMS=CSV REPLACE; PUTNAMES=YES; RUN;
+
+/*IRRLも付けるとよい*/
+
+%mend;
+%d(a=201211);
+
+
+options compress = yes;
+libname f "F:\Shinki_meisai\IRRL"; 
+
+
+IRRLの検討
+IRRL毎の発生率
+MCS以降の発生（和解ベース）明細
+
+/*元データ読み込み→順次追加*/
+PROC IMPORT OUT= F.H201009 DATAFILE= "F:\Shinki_meisai\IRRL\債権明細201009_12.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201101 DATAFILE= "F:\Shinki_meisai\IRRL\債権明細201101_03.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201104 DATAFILE= "F:\Shinki_meisai\IRRL\債権明細201104_06.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201107 DATAFILE= "F:\Shinki_meisai\IRRL\債権明細201107_09.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201110 DATAFILE= "F:\Shinki_meisai\IRRL\引き直し明細201110_12.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201201 DATAFILE= "F:\Shinki_meisai\IRRL\引き直し明細201201_03.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201204 DATAFILE= "F:\Shinki_meisai\IRRL\引き直し明細201204_06.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+PROC IMPORT OUT= F.H201207 DATAFILE= "F:\Shinki_meisai\IRRL\引き直し明細201207_09.csv" DBMS=CSV REPLACE;
+GETNAMES=YES; DATAROW=2; RUN;
+
+
+/*IRRL数値のみ抽出→順次追加*/
+%macro x(a=, b=);
+data f.hk&a.; set f.h&b.(keep = cust_itrn_no hknos_&a. rename = (hknos_&a. = IRRL)) ; ym = &a.; run; 
+%mend;
+%x(a= 201009, b= 201009);
+%x(a= 201010, b= 201009);
+%x(a= 201011, b= 201009);
+%x(a= 201012, b= 201009);
+%x(a= 201101, b= 201101);
+%x(a= 201102, b= 201101);
+%x(a= 201103, b= 201101);
+%x(a= 201104, b= 201104);
+%x(a= 201105, b= 201104);
+%x(a= 201106, b= 201104);
+%x(a= 201107, b= 201107);
+%x(a= 201108, b= 201107);
+%x(a= 201109, b= 201107);
+%x(a= 201110, b= 201110);
+%x(a= 201111, b= 201110);
+%x(a= 201112, b= 201110);
+%x(a= 201201, b= 201201);
+%x(a= 201202, b= 201201);
+%x(a= 201203, b= 201201);
+%x(a= 201204, b= 201204);
+%x(a= 201205, b= 201204);
+%x(a= 201206, b= 201204);
+
+/*データセット名      F.HK201009                                オブザベーション数            1082938*/
+/*データセット名      F.HK201010                                オブザベーション数            1082938*/
+/*データセット名      F.HK201011                                オブザベーション数            1082938*/
+/*データセット名      F.HK201012                                オブザベーション数            1082938*/
+/*データセット名      F.HK201101                                オブザベーション数            1658011*/
+/*データセット名      F.HK201102                                オブザベーション数            1658011*/
+/*データセット名      F.HK201103                                オブザベーション数            1658011*/
+/*データセット名      F.HK201104                                オブザベーション数            1660824*/
+/*データセット名      F.HK201105                                オブザベーション数            1660824*/
+/*データセット名      F.HK201106                                オブザベーション数            1660824*/
+/*データセット名      F.HK201107                                オブザベーション数            1663343*/
+/*データセット名      F.HK201108                                オブザベーション数            1663343*/
+/*データセット名      F.HK201109                                オブザベーション数            1663343*/
+/*データセット名      F.HK201110                                オブザベーション数            1665587*/
+/*データセット名      F.HK201111                                オブザベーション数            1665587*/
+/*データセット名      F.HK201112                                オブザベーション数            1665587*/
+/*データセット名      F.HK201201                                オブザベーション数            1668421*/
+/*データセット名      F.HK201202                                オブザベーション数            1668421*/
+/*データセット名      F.HK201203                                オブザベーション数            1668421*/
+/*データセット名      F.HK201204                                オブザベーション数            1671961*/
+/*データセット名      F.HK201205                                オブザベーション数            1671961*/
+/*データセット名      F.HK201206                                オブザベーション数            1671961*/
+
+追加分だけHK_allに追加 or 最新ファイルを採用すればそれですべてカバーできる
+
+%macro x();
+data f.hk_all; set 
+%do i=1 %to 22;
+	f.hk%sysfunc(putn(
+		%sysfunc(intnx(month, '31AUG2010'd, &i.)), yymmn6.))
+%end;
+; 
+run;
+%mend;
+%x;
+proc sort data = f.hk_all; by cust_itrn_no descending ym; run; 
+/*data f.hk_all; set f.hk_all; hknos_round = int(IRRL/100000)*100000; run;*/
+proc sort data = f.hk_all out = f.hk_latest nodupkey; by cust_itrn_no; run; 
+
+
+和解ベース一覧
+データセット名      E.MCS_DATA                                
+オブザベーション数            33112
+12    IRRL                文字         3
+9    OWP                 文字         4
+10    PR                  文字         5
+2    SAIM_SYA_CUST_NO    数値         8    BEST12.     BEST32.     cust_no
+11    SCORE               文字         1
+3    VAR2                数値         8    BEST12.     BEST32.     会員一連番号
+5    VAR3                数値         8    BEST12.     BEST32.     実行残
+6    VAR4                数値         8    BEST12.     BEST32.     減額元金
+7    VAR5                数値         8    BEST12.     BEST32.     元金カット額
+8    VAR6                数値         8    BEST12.     BEST32.     残高
+1    YM                  数値         8    BEST12.     BEST32.
+4    ZNDK                数値         8
+
+支払ベース一覧
+データセット名      D.MCS_PAYOUT_DATA
+オブザベーション数            29891
+7    BAL               数値         8    BEST12.     BEST32.     残高
+12    OWP               文字         4
+9    P                 数値         8
+6    PRIN_CUT          数値         8    BEST12.     BEST32.     元金カット額
+13    PROD              文字         5
+5    REDUCTION         数値         8    BEST12.     BEST32.     減額元金
+14    SCORE             文字         1
+11    SCR               数値         8    BEST2.
+8    WO                数値         8
+1    YM                数値         8    BEST12.     BEST32.
+4    ZAN               数値         8    BEST12.     BEST32.     実行残
+3    ZNDK_MCS_ALL      数値         8
+2    cust_itrn_no      数値         8    BEST12.     BEST32.
+10    payment_amount    数値         8    BEST12.     BEST32.
+
+
+f.hk_latest
+2    IRRL            数値         8    BEST12.     BEST32.
+1    cust_itrn_no    数値         8    BEST12.     BEST32.
+3    ym              数値         8
+
+
+/*引き直し計算結果のマージ状況＝payout dataは全件マージできる*/
+
+proc sort data = e.mcs_data; by var2; run;
+data f.hk_wakai; merge 
+e.mcs_data(rename = (VAR2 = cust_itrn_no VAR3 = zan VAR4 = reduction VAR5 = prin_cut VAR6 = bal ) in = a)
+f.hk_latest(drop = ym rename = (IRRL = hknos) in = b); by cust_itrn_no; if a=1 and b=1; run;
+/*NOTE: データセット E.MCS_DATA から 33112 オブザベーションを読み込みました。*/
+/*NOTE: データセット F.HK_WAKAI は 25393 オブザベーション、 13 変数です。*/
+/*約8000件欠落*/
+
+proc sort data = d.mcs_payout_data; by cust_itrn_no; run;
+data f.hk_payout; merge 
+d.mcs_payout_data(in = a)
+f.hk_latest(drop = ym rename = (IRRL = hknos) in = b); by cust_itrn_no; if a=1 and b=1; 
+hknos_round = int(hknos/100000)*100000;
+run;
+/*NOTE: データセット D.MCS_PAYOUT_DATA から 29891 オブザベーションを読み込みました。*/
+/*NOTE: データセット F.HK_PAYOUT は 29891 オブザベーション、 15 変数です。*/
+/*全件該当あり*/
+
+
+/*発生分集計：分子*/
+proc summary data = f.hk_payout; 
+class ym prod SCORE OWP hknos_round;
+var payment_amount;
+output out = f.hk_payout_sum n(payment_amount)=payment_c; run;
+
+data a; set f.hk_payout_sum; where _type_ = 31; drop _freq_ _type_; run;
+proc summary data = a; class ym hknos_round; var payment_c; 
+output out = b(drop = _type_ _freq_) sum(payment_c)=; run;
+
+/*縦 hknos_round*/
+/*横 ym*/
+proc sort data = b; by hknos_round; run;
+proc transpose data = b out = f.hk_payout_sum_t; 
+var payment_c;
+by hknos_round;
+id ym;
+run;
+
+
+7    BAL               数値         8    BEST12.     BEST32.     残高
+9    P                 数値         8
+6    PRIN_CUT          数値         8    BEST12.     BEST32.     元金カット額
+5    REDUCTION         数値         8    BEST12.     BEST32.     減額元金
+8    WO                数値         8
+4    ZAN               数値         8    BEST12.     BEST32.     実行残
+3    ZNDK_MCS_ALL      数値         8
+2    cust_itrn_no      数値         8    BEST12.     BEST32.
+10    payment_amount    数値         8    BEST12.     BEST32.
+2    hknos            数値         8    BEST12.     BEST32.
+
+
+/*分母（引き直し計算データ）を集計*/
+data f.hk201206; set f.hk201206; 
+hknos_round = int(IRRL/100000)*100000;
+run;
+
+proc summary data = f.hk201206; class hknos_round; var cust_itrn_no;
+output out = f.hk201206_sum(drop = _type_ _freq_) n(cust_itrn_no)=eligible_c; run;
+
+data f.payout_hknos; merge f.hk_payout_sum_t(drop = _name_) f.hk201206_sum; by hknos_round; run;
+proc sort data = f.h201204 out=x nodupkey; by cust_itrn_no; run;
