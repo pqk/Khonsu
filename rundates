@@ -1,0 +1,138 @@
+/*START: Generate monthly yymmXX series of macro variables from 2011/12 to today()*/
+data _null_; 
+if (month(today()))<10 then do;
+x=strip(substr(put(year(today()),4.),3,4));
+y='0'||strip(put(month('09Jul2014'd),2.));
+call symputx('Run_date',cats(x,y));
+	end;
+else do;
+x=strip(substr(put(year(today()),4.),3,4));
+y=strip(put(month(today()),2.));
+call symputx('Run_date',cats(x,y));
+	end;
+run;
+
+%macro Elig_dates;
+%let start=11;
+%let fin=%substr(&run_date,1,2);
+data E_date;
+%do yr=&start %to &fin;
+	%do mo=1 %to 12;
+		%if &mo<10 %then %do;
+Var1=&yr.0&mo;
+output;
+		%end;
+	    %else %if &mo>=10 %then %do;
+Var1=&yr&mo;
+output;
+		%end;
+	%end;
+%end;
+run;
+
+proc sql;
+select var1 into :yymm1- :yymm999
+from WORK.E_DATE
+where var1>=1112 and var1<=input(&run_date,4.);
+quit;
+
+proc sql;
+drop table E_date; 
+quit;
+
+%mend Elig_dates;
+
+%Elig_dates
+/*END monthly series macro variable generation*/
+
+
+
+/*TEST*/
+data test;
+if (day('09Jul2014'd))<10 then do;
+x=strip(substr(put(year(today()),4.),3,4));
+y='0'||strip(put(day('09Jul2014'd),2.));
+z=cats(x,y);
+	end;
+else do;
+x=strip(substr(put(year(today()),4.),3,4));
+y=strip(put(day(today()),2.));
+z=cats(x,y);
+	end;
+run;
+/***/
+
+call symputx('Run_date',cats(x,y));
+
+
+data _null_;
+if (month(today()))<10 then do;
+x=strip(substr(put(year(today()),4.),3,4));
+y='0'||strip(put(month('09Jul2014'd),2.));
+call symputx('Run_date',cats(x,y));
+	end;
+else do;
+x=strip(substr(put(year(today()),4.),3,4));
+y=strip(put(month(today()),2.));
+call symputx('Run_date',cats(x,y));
+	end;
+run;
+%put _user_;
+
+proc sql;
+drop table E_date; quit;
+
+
+proc sql;
+select var1 into :yymm1- :yymm999
+from WORK.E_DATE
+where var1>=1112 and var1<=input(&run_date,4.);
+quit;
+%put _user_;
+
+
+data _null_;
+if (month(today()))<10 then do;
+x=strip(substr(put(year(today()),4.),3,4));
+y='0'||strip(put(month('09Jul2014'd),2.));
+call symputx('Run_date',cats(x,y));
+	end;
+else do;
+x=strip(substr(put(year(today()),4.),3,4));
+y=strip(put(month(today()),2.));
+call symputx('Run_date',cats(x,y));
+	end;
+run;
+
+%macro Elig_dates;
+%let start=11;
+%let fin=%substr(&run_date,1,2);
+data E_date;
+%do yr=&start %to &fin;
+	%do mo=1 %to 12;
+		%if &mo<10 %then %do;
+Var1=&yr.0&mo;
+output;
+		%end;
+	    %else %if &mo>=10 %then %do;
+Var1=&yr&mo;
+output;
+		%end;
+	%end;
+%end;
+run;
+
+proc sql;
+select var1 into :yymm1- :yymm999
+from WORK.E_DATE
+where var1>=1112 and var1<=input(&run_date,4.);
+quit;
+
+proc sql;
+drop table E_date; 
+quit;
+
+%mend Elig_dates;
+
+%Elig_dates
+
